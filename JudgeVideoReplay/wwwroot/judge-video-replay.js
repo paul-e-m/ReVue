@@ -19,6 +19,7 @@
         shell: document.getElementById("judgeVideoReplayShell"),
         topRow: document.getElementById("judgeVideoReplayTopRow"),
         elementRailColumn: document.getElementById("elementRailColumn"),
+        judgeVideoReplayAutoplayLabel: document.getElementById("judgeVideoReplayAutoplayLabel"),
         judgeVideoReplayAutoplayToggle: document.getElementById("judgeVideoReplayAutoplayToggle"),
         videoPane: document.getElementById("videoPane"),
         judgeVideoReplaySessionInfo: document.getElementById("judgeVideoReplaySessionInfo"),
@@ -699,7 +700,7 @@
     }
 
     function applyJudgeVideoReplaySettingsI18n() {
-        dom.judgeVideoReplaySettingsOverlay?.querySelectorAll("[data-judge-video-replay-i18n]").forEach(element => {
+        document.querySelectorAll("[data-judge-video-replay-i18n]").forEach(element => {
             const key = element.getAttribute("data-judge-video-replay-i18n");
             if (!key) return;
             element.textContent = judgeVideoReplaySettingsText(key);
@@ -713,6 +714,7 @@
             dom.judgeVideoReplaySettingsLanguage.value = judgeVideoReplaySettingsLanguage;
             dom.judgeVideoReplaySettingsLanguage.setAttribute("aria-label", judgeVideoReplaySettingsText("languageSelectorAria"));
         }
+        syncAutoplaySelectedClipToggle();
     }
 
     function writeJudgeVideoReplaySettingsForm(config) {
@@ -756,6 +758,23 @@
         if (!response.ok) throw new Error(await response.text());
         writeJudgeVideoReplaySettingsForm(await response.json());
         setJudgeVideoReplaySettingsStatus("settingsLoaded", "ok", true);
+    }
+
+    async function loadInitialJudgeVideoReplaySettings() {
+        const hostResponse = postJudgeVideoReplayHostRequest("loadConfig");
+        if (hostResponse) {
+            const config = await hostResponse;
+            writeJudgeVideoReplaySettingsForm(config);
+            applySavedJudgeVideoReplaySettings(config);
+            return;
+        }
+
+        const response = await fetch("/api/judge-video-replay/config", { cache: "no-store" });
+        if (!response.ok) return;
+
+        const config = await response.json();
+        writeJudgeVideoReplaySettingsForm(config);
+        applySavedJudgeVideoReplaySettings(config);
     }
 
     async function saveJudgeVideoReplaySettings() {
@@ -1949,6 +1968,7 @@
         state.showAllMode = false;
         state.selectedClipIndex = null;
         state.requestedClipIndex = state.wantMenu ? 0 : options.clipIndex;
+        await loadInitialJudgeVideoReplaySettings().catch(() => { });
         syncAutoplaySelectedClipToggle();
         applyTimerControlVisibility();
         renderRail();
