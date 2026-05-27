@@ -50,11 +50,44 @@ Example:
 
 `JudgeUI` / `RefereeUI`
 
-- Hidden appconfig.json sections. They are not shown in the settings dialog.
-- `DisplayTimerStopwatch` controls whether the stopwatch icon is visible.
-- `DisplayDanceLiftPresets` controls whether the 8/10/13-second preset buttons are visible.
-- `UpdateVideoWhileScrubbing` controls whether dragging the video scrub bar updates the video view before the scrub bar is released.
-- Each value accepts `true` or `false`, either as a JSON boolean or as a string.
+- Role-specific UI settings. These sections are saved in `appconfig.json`, but they are not shown in the settings dialog.
+- The `Role` value decides which section is active when the app opens.
+- `JudgeUI` applies when `Role` is `judge`.
+- `RefereeUI` applies when `Role` is `referee`.
+- Each setting accepts `true` or `false`, either as a JSON boolean or as a string.
+
+| Setting | What it controls |
+| --- | --- |
+| `DisplayTimerStopwatch` | Shows or hides the stopwatch icon. When this is `false`, the timer stopwatch function is unavailable for that role. |
+| `DisplayDanceLiftPresets` | Shows or hides the 8, 10, and 13-second dance lift preset buttons. These buttons only appear after the stopwatch has been turned on. |
+| `UpdateVideoWhileScrubbing` | Controls whether the video image updates live while the scrub bar is dragged. When `false`, the video jumps to the selected time only after the scrub bar is released. |
+
+Example role-dependent behavior:
+
+```json
+"JudgeUI": {
+  "DisplayTimerStopwatch": "true",
+  "DisplayDanceLiftPresets": "false",
+  "UpdateVideoWhileScrubbing": "false"
+},
+"RefereeUI": {
+  "DisplayTimerStopwatch": "true",
+  "DisplayDanceLiftPresets": "true",
+  "UpdateVideoWhileScrubbing": "true"
+}
+```
+
+With this setup, judges can use the stopwatch but do not see the dance lift preset buttons, while referees see both the stopwatch and preset buttons. Referees also get live video updates while dragging the scrub bar; judges do not.
+
+To give judges live video updates while scrubbing, change only the judge setting:
+
+```json
+"JudgeUI": {
+  "DisplayTimerStopwatch": "true",
+  "DisplayDanceLiftPresets": "false",
+  "UpdateVideoWhileScrubbing": "true"
+}
+```
 
 `Language`
 
