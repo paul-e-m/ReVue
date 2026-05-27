@@ -261,7 +261,7 @@ export class ReplayController {
 
             if (this.autoSelectClip1) {
                 this.autoSelectClip1 = false;
-                this.app.refs.clipList?.querySelector('button[data-clip-index="1"]')?.click();
+                this.selectClip(1, { autoplay: false }).catch(console.error);
             }
         });
 
