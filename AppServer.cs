@@ -227,7 +227,7 @@ public static class AppServer
                 cfg.JudgeUI,
                 displayTimerStopwatch: true,
                 displayDanceLiftPresets: false,
-                updateVideoWhileScrubbing: false);
+                updateVideoWhileScrubbing: true);
             cfg.RefereeUI = NormalizeJudgeVideoReplayRoleUi(
                 cfg.RefereeUI,
                 displayTimerStopwatch: true,

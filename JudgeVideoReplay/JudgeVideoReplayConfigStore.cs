@@ -68,7 +68,7 @@ internal static class JudgeVideoReplayConfigStore
             config.JudgeUI,
             displayTimerStopwatch: true,
             displayDanceLiftPresets: false,
-            updateVideoWhileScrubbing: false);
+            updateVideoWhileScrubbing: true);
         config.RefereeUI = NormalizeRoleUi(
             config.RefereeUI,
             displayTimerStopwatch: true,

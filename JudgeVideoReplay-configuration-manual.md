@@ -33,7 +33,7 @@ Example:
   "JudgeUI": {
     "DisplayTimerStopwatch": "true",
     "DisplayDanceLiftPresets": "false",
-    "UpdateVideoWhileScrubbing": "false"
+    "UpdateVideoWhileScrubbing": "true"
   },
   "RefereeUI": {
     "DisplayTimerStopwatch": "true",
@@ -68,7 +68,7 @@ Example role-dependent behavior:
 "JudgeUI": {
   "DisplayTimerStopwatch": "true",
   "DisplayDanceLiftPresets": "false",
-  "UpdateVideoWhileScrubbing": "false"
+  "UpdateVideoWhileScrubbing": "true"
 },
 "RefereeUI": {
   "DisplayTimerStopwatch": "true",
@@ -77,15 +77,15 @@ Example role-dependent behavior:
 }
 ```
 
-With this setup, judges can use the stopwatch but do not see the dance lift preset buttons, while referees see both the stopwatch and preset buttons. Referees also get live video updates while dragging the scrub bar; judges do not.
+With this setup, judges can use the stopwatch but do not see the dance lift preset buttons, while referees see both the stopwatch and preset buttons. Both roles get live video updates while dragging the scrub bar.
 
-To give judges live video updates while scrubbing, change only the judge setting:
+To turn off live video updates for judges while scrubbing, change only the judge setting:
 
 ```json
 "JudgeUI": {
   "DisplayTimerStopwatch": "true",
   "DisplayDanceLiftPresets": "false",
-  "UpdateVideoWhileScrubbing": "true"
+  "UpdateVideoWhileScrubbing": "false"
 }
 ```
 

@@ -704,7 +704,7 @@
         const defaults = {
             displayTimerStopwatch: true,
             displayDanceLiftPresets: isReferee,
-            updateVideoWhileScrubbing: isReferee
+            updateVideoWhileScrubbing: true
         };
 
         return {
