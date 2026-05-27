@@ -28,22 +28,33 @@ Example:
 {
   "ServerIp": "192.168.6.25",
   "Role": "referee",
-  "TimerEnabled": true,
   "Language": "en",
-  "UiZoomPercent": 100
+  "UiZoomPercent": 100,
+  "JudgeUI": {
+    "DisplayTimerStopwatch": "true",
+    "DisplayDanceLiftPresets": "false",
+    "UpdateVideoWhileScrubbing": "false"
+  },
+  "RefereeUI": {
+    "DisplayTimerStopwatch": "true",
+    "DisplayDanceLiftPresets": "true",
+    "UpdateVideoWhileScrubbing": "true"
+  }
 }
 ```
 
 `Role`
 
 - Supported values are `judge` and `referee`.
-- The `judge` role hides the timer controls.
-- The `referee` role shows the timer controls.
+- The active role selects which hidden UI section, `JudgeUI` or `RefereeUI`, controls the replay window.
 
-`TimerEnabled`
+`JudgeUI` / `RefereeUI`
 
-- Compatibility value derived from `Role`.
-- `true` when `Role` is `referee`; `false` when `Role` is `judge`.
+- Hidden appconfig.json sections. They are not shown in the settings dialog.
+- `DisplayTimerStopwatch` controls whether the stopwatch icon is visible.
+- `DisplayDanceLiftPresets` controls whether the 8/10/13-second preset buttons are visible.
+- `UpdateVideoWhileScrubbing` controls whether dragging the video scrub bar updates the video view before the scrub bar is released.
+- Each value accepts `true` or `false`, either as a JSON boolean or as a string.
 
 `Language`
 

@@ -46,7 +46,41 @@ public sealed class JudgeVideoReplayMainForm : Form
     {
         config = JudgeVideoReplayConfigStore.Normalize(config);
         var url = $"https://{SettingsVirtualHost}/judge-video-replay.html?0&judgeVideoReplay=true";
-        return config.TimerEnabled ? url + "&timer=true" : url + "&timer=false";
+        return IsTimerStopwatchVisible(config) ? url + "&timer=true" : url + "&timer=false";
+    }
+
+    private static bool IsTimerStopwatchVisible(JudgeVideoReplayConfig config)
+    {
+        var roleUi = string.Equals(config.Role, JudgeVideoReplayConfigStore.RefereeRole, StringComparison.OrdinalIgnoreCase)
+            ? config.RefereeUI
+            : config.JudgeUI;
+        return IsUiFlagEnabled(roleUi?.DisplayTimerStopwatch, true);
+    }
+
+    private static bool IsUiFlagEnabled(object? value, bool defaultValue)
+    {
+        if (value is bool enabled)
+        {
+            return enabled;
+        }
+
+        if (value is JsonElement element)
+        {
+            return element.ValueKind switch
+            {
+                JsonValueKind.True => true,
+                JsonValueKind.False => false,
+                JsonValueKind.String => IsUiFlagEnabled(element.GetString(), defaultValue),
+                _ => defaultValue
+            };
+        }
+
+        return value?.ToString()?.Trim().ToLowerInvariant() switch
+        {
+            "true" or "1" or "yes" or "y" or "on" => true,
+            "false" or "0" or "no" or "n" or "off" => false,
+            _ => defaultValue
+        };
     }
 
     private async Task InitializeWebViewAsync()

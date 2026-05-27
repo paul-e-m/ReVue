@@ -222,19 +222,70 @@ public static class AppServer
             cfg.Language = string.Equals(cfg.Language?.Trim(), "fr", StringComparison.OrdinalIgnoreCase)
                 ? "fr"
                 : "en";
-            cfg.Role = NormalizeJudgeVideoReplayRole(cfg.Role, cfg.TimerEnabled);
-            cfg.TimerEnabled = string.Equals(cfg.Role, "referee", StringComparison.OrdinalIgnoreCase);
+            cfg.Role = NormalizeJudgeVideoReplayRole(cfg.Role);
+            cfg.JudgeUI = NormalizeJudgeVideoReplayRoleUi(
+                cfg.JudgeUI,
+                displayTimerStopwatch: true,
+                displayDanceLiftPresets: false,
+                updateVideoWhileScrubbing: false);
+            cfg.RefereeUI = NormalizeJudgeVideoReplayRoleUi(
+                cfg.RefereeUI,
+                displayTimerStopwatch: true,
+                displayDanceLiftPresets: true,
+                updateVideoWhileScrubbing: true);
             cfg.UiZoomPercent = Math.Clamp(cfg.UiZoomPercent, 50, 150);
             return cfg;
         }
 
-        static string NormalizeJudgeVideoReplayRole(string? role, bool timerEnabled)
+        static string NormalizeJudgeVideoReplayRole(string? role)
         {
             return role?.Trim().ToLowerInvariant() switch
             {
                 "judge" => "judge",
                 "referee" => "referee",
-                _ => timerEnabled ? "referee" : "judge"
+                _ => "referee"
+            };
+        }
+
+        static JudgeVideoReplayRoleUiConfig NormalizeJudgeVideoReplayRoleUi(
+            JudgeVideoReplayRoleUiConfig? cfg,
+            bool displayTimerStopwatch,
+            bool displayDanceLiftPresets,
+            bool updateVideoWhileScrubbing)
+        {
+            cfg ??= new JudgeVideoReplayRoleUiConfig();
+            cfg.DisplayTimerStopwatch = NormalizeJudgeVideoReplayBooleanValue(cfg.DisplayTimerStopwatch, displayTimerStopwatch);
+            cfg.DisplayDanceLiftPresets = NormalizeJudgeVideoReplayBooleanValue(cfg.DisplayDanceLiftPresets, displayDanceLiftPresets);
+            cfg.UpdateVideoWhileScrubbing = NormalizeJudgeVideoReplayBooleanValue(cfg.UpdateVideoWhileScrubbing, updateVideoWhileScrubbing);
+            return cfg;
+        }
+
+        static string NormalizeJudgeVideoReplayBooleanValue(object? value, bool defaultValue)
+            => IsJudgeVideoReplayBooleanValueEnabled(value, defaultValue) ? "true" : "false";
+
+        static bool IsJudgeVideoReplayBooleanValueEnabled(object? value, bool defaultValue)
+        {
+            if (value is bool enabled)
+            {
+                return enabled;
+            }
+
+            if (value is JsonElement element)
+            {
+                return element.ValueKind switch
+                {
+                    JsonValueKind.True => true,
+                    JsonValueKind.False => false,
+                    JsonValueKind.String => IsJudgeVideoReplayBooleanValueEnabled(element.GetString(), defaultValue),
+                    _ => defaultValue
+                };
+            }
+
+            return value?.ToString()?.Trim().ToLowerInvariant() switch
+            {
+                "true" or "1" or "yes" or "y" or "on" => true,
+                "false" or "0" or "no" or "n" or "off" => false,
+                _ => defaultValue
             };
         }
 
@@ -344,8 +395,7 @@ public static class AppServer
             {
                 var json = File.ReadAllText(path);
                 cachedJudgeVideoReplayConfig = NormalizeJudgeVideoReplayConfig(JsonSerializer.Deserialize<JudgeVideoReplayConfig>(json, jsonOpts));
-                cachedJudgeVideoReplayConfigWriteUtc = writeUtc;
-                cachedJudgeVideoReplayConfigExists = true;
+                SaveJudgeVideoReplayConfig(cachedJudgeVideoReplayConfig);
                 return cachedJudgeVideoReplayConfig;
             }
             catch

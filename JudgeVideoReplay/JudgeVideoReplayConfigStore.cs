@@ -36,7 +36,9 @@ internal static class JudgeVideoReplayConfigStore
         try
         {
             var json = File.ReadAllText(ConfigPath);
-            return Normalize(JsonSerializer.Deserialize<JudgeVideoReplayConfig>(json, JsonOptions));
+            var config = Normalize(JsonSerializer.Deserialize<JudgeVideoReplayConfig>(json, JsonOptions));
+            Save(config);
+            return config;
         }
         catch
         {
@@ -61,20 +63,72 @@ internal static class JudgeVideoReplayConfigStore
         config.Language = string.Equals(config.Language?.Trim(), "fr", StringComparison.OrdinalIgnoreCase)
             ? "fr"
             : "en";
-        config.Role = NormalizeRole(config.Role, config.TimerEnabled);
-        config.TimerEnabled = string.Equals(config.Role, RefereeRole, StringComparison.OrdinalIgnoreCase);
+        config.Role = NormalizeRole(config.Role);
+        config.JudgeUI = NormalizeRoleUi(
+            config.JudgeUI,
+            displayTimerStopwatch: true,
+            displayDanceLiftPresets: false,
+            updateVideoWhileScrubbing: false);
+        config.RefereeUI = NormalizeRoleUi(
+            config.RefereeUI,
+            displayTimerStopwatch: true,
+            displayDanceLiftPresets: true,
+            updateVideoWhileScrubbing: true);
         config.UiZoomPercent = Math.Clamp(config.UiZoomPercent, MinUiZoomPercent, MaxUiZoomPercent);
         return config;
     }
 
-    private static string NormalizeRole(string? role, bool timerEnabled)
+    private static string NormalizeRole(string? role)
     {
         var normalized = role?.Trim().ToLowerInvariant();
         return normalized switch
         {
             JudgeRole => JudgeRole,
             RefereeRole => RefereeRole,
-            _ => timerEnabled ? RefereeRole : JudgeRole
+            _ => RefereeRole
+        };
+    }
+
+    private static JudgeVideoReplayRoleUiConfig NormalizeRoleUi(
+        JudgeVideoReplayRoleUiConfig? config,
+        bool displayTimerStopwatch,
+        bool displayDanceLiftPresets,
+        bool updateVideoWhileScrubbing)
+    {
+        config ??= new JudgeVideoReplayRoleUiConfig();
+        config.DisplayTimerStopwatch = NormalizeBooleanValue(config.DisplayTimerStopwatch, displayTimerStopwatch);
+        config.DisplayDanceLiftPresets = NormalizeBooleanValue(config.DisplayDanceLiftPresets, displayDanceLiftPresets);
+        config.UpdateVideoWhileScrubbing = NormalizeBooleanValue(config.UpdateVideoWhileScrubbing, updateVideoWhileScrubbing);
+        return config;
+    }
+
+    private static string NormalizeBooleanValue(object? value, bool defaultValue)
+        => IsBooleanValueEnabled(value, defaultValue) ? "true" : "false";
+
+    private static bool IsBooleanValueEnabled(object? value, bool defaultValue)
+    {
+        if (value is bool enabled)
+        {
+            return enabled;
+        }
+
+        if (value is JsonElement element)
+        {
+            return element.ValueKind switch
+            {
+                JsonValueKind.True => true,
+                JsonValueKind.False => false,
+                JsonValueKind.String => IsBooleanValueEnabled(element.GetString(), defaultValue),
+                _ => defaultValue
+            };
+        }
+
+        var normalized = value?.ToString()?.Trim().ToLowerInvariant();
+        return normalized switch
+        {
+            "true" or "1" or "yes" or "y" or "on" => true,
+            "false" or "0" or "no" or "n" or "off" => false,
+            _ => defaultValue
         };
     }
 }

@@ -83,7 +83,9 @@
         wantLoop: false,
         wantMenu: false,
         showTimerControl: true,
+        showTimingPresets: true,
         isRefereeRole: true,
+        updateVideoWhileScrubbing: true,
         loopArmed: false,
         uiRafId: null,
         holdPauseVisual: false,
@@ -660,7 +662,7 @@
     }
 
     function syncTimingPresetButtons() {
-        const visible = state.showTimerControl && state.stopwatchEnabled;
+        const visible = state.showTimerControl && state.showTimingPresets && state.stopwatchEnabled;
         dom.timingPresetButtons?.classList.toggle("hidden", !visible);
         requestAnimationFrame(adjustTransportButtonOverlap);
     }
@@ -679,14 +681,37 @@
         return value === "fr" ? "fr" : "en";
     }
 
-    function normalizeJudgeVideoReplayRole(value, timerEnabled = true) {
+    function normalizeJudgeVideoReplayRole(value) {
         const normalized = String(value ?? "").trim().toLowerCase();
         if (normalized === "judge" || normalized === "referee") return normalized;
-        return timerEnabled ? "referee" : "judge";
+        return "referee";
     }
 
-    function isRefereeRole(value, timerEnabled = true) {
-        return normalizeJudgeVideoReplayRole(value, timerEnabled) === "referee";
+    function isRefereeRole(value) {
+        return normalizeJudgeVideoReplayRole(value) === "referee";
+    }
+
+    function normalizeUiBoolean(value, defaultValue) {
+        if (typeof value === "boolean") return value;
+        const normalized = String(value ?? "").trim().toLowerCase();
+        if (normalized === "true" || normalized === "1" || normalized === "yes" || normalized === "y" || normalized === "on") return true;
+        if (normalized === "false" || normalized === "0" || normalized === "no" || normalized === "n" || normalized === "off") return false;
+        return !!defaultValue;
+    }
+
+    function readActiveRoleUiConfig(config, isReferee) {
+        const roleUi = isReferee ? config?.RefereeUI : config?.JudgeUI;
+        const defaults = {
+            displayTimerStopwatch: true,
+            displayDanceLiftPresets: isReferee,
+            updateVideoWhileScrubbing: isReferee
+        };
+
+        return {
+            displayTimerStopwatch: normalizeUiBoolean(roleUi?.DisplayTimerStopwatch, defaults.displayTimerStopwatch),
+            displayDanceLiftPresets: normalizeUiBoolean(roleUi?.DisplayDanceLiftPresets, defaults.displayDanceLiftPresets),
+            updateVideoWhileScrubbing: normalizeUiBoolean(roleUi?.UpdateVideoWhileScrubbing, defaults.updateVideoWhileScrubbing)
+        };
     }
 
     function judgeVideoReplaySettingsText(key) {
@@ -724,7 +749,7 @@
             dom.judgeVideoReplaySettingsServerIp.value = String(config?.ServerIp ?? "127.0.0.1");
         }
         if (dom.judgeVideoReplaySettingsRole) {
-            dom.judgeVideoReplaySettingsRole.value = normalizeJudgeVideoReplayRole(config?.Role, config?.TimerEnabled);
+            dom.judgeVideoReplaySettingsRole.value = normalizeJudgeVideoReplayRole(config?.Role);
         }
         if (dom.judgeVideoReplaySettingsUiZoomPercent) {
             dom.judgeVideoReplaySettingsUiZoomPercent.value = String(clamp(Number(config?.UiZoomPercent ?? 100), 50, 150));
@@ -734,12 +759,11 @@
 
     function readJudgeVideoReplaySettingsForm() {
         const zoomPercent = clamp(Math.round(Number(dom.judgeVideoReplaySettingsUiZoomPercent?.value || 100)), 50, 150);
-        const role = normalizeJudgeVideoReplayRole(dom.judgeVideoReplaySettingsRole?.value, judgeVideoReplaySettingsConfig?.TimerEnabled);
+        const role = normalizeJudgeVideoReplayRole(dom.judgeVideoReplaySettingsRole?.value);
         return {
             ...judgeVideoReplaySettingsConfig,
             ServerIp: dom.judgeVideoReplaySettingsServerIp?.value.trim() || "127.0.0.1",
             Role: role,
-            TimerEnabled: role === "referee",
             UiZoomPercent: zoomPercent,
             Language: judgeVideoReplaySettingsLanguage
         };
@@ -802,8 +826,11 @@
     }
 
     function applySavedJudgeVideoReplaySettings(config) {
-        state.isRefereeRole = isRefereeRole(config?.Role, config?.TimerEnabled);
-        state.showTimerControl = state.isRefereeRole;
+        state.isRefereeRole = isRefereeRole(config?.Role);
+        const roleUi = readActiveRoleUiConfig(config, state.isRefereeRole);
+        state.showTimerControl = roleUi.displayTimerStopwatch;
+        state.showTimingPresets = roleUi.displayDanceLiftPresets;
+        state.updateVideoWhileScrubbing = roleUi.updateVideoWhileScrubbing;
         syncAutoplaySelectedClipToggle();
         applyTimerControlVisibility();
     }
@@ -914,7 +941,7 @@
         state.scrubPreviewTimeSeconds = clamped;
         state.stopAtClipEnd = clamped <= clip.endSeconds - END_EPS;
 
-        if (state.isRefereeRole && Math.abs(Number(dom.video.currentTime || 0) - clamped) > 0.03) {
+        if (state.updateVideoWhileScrubbing && Math.abs(Number(dom.video.currentTime || 0) - clamped) > 0.03) {
             dom.video.currentTime = clamped;
         }
 
@@ -1475,7 +1502,7 @@
     function updateButtonDisabledState(enabled) {
         dom.stopwatchBtn.disabled = !enabled || !state.showTimerControl;
         dom.timingPresetButtons?.querySelectorAll("button").forEach(button => {
-            button.disabled = !enabled;
+            button.disabled = !enabled || !state.showTimingPresets;
         });
         dom.playPause.disabled = !enabled;
         dom.rew10.disabled = !enabled;
@@ -1623,6 +1650,7 @@
     }
 
     async function applyTimingPreset(seconds) {
+        if (!state.showTimingPresets) return;
         if (!state.stopwatchEnabled || !Number.isFinite(state.stopwatchAnchorSeconds)) return;
 
         await goToTime(Number(state.stopwatchAnchorSeconds) + seconds, false, { allowOutOfClipIndicator: true });
@@ -1933,7 +1961,7 @@
     dom.stopwatchBtn?.addEventListener("click", toggleStopwatch);
     dom.timingPresetButtons?.addEventListener("click", event => {
         const button = event.target.closest("button[data-timing-seconds]");
-        if (!button || button.disabled) return;
+        if (!button || button.disabled || !state.showTimingPresets) return;
 
         const seconds = Number(button.dataset.timingSeconds);
         if (!Number.isFinite(seconds)) return;
@@ -1963,7 +1991,9 @@
         state.wantAutoplay = state.wantMenu ? false : options.autoplay;
         state.wantLoop = state.wantMenu ? false : options.loop;
         state.showTimerControl = options.timer;
+        state.showTimingPresets = options.timer;
         state.isRefereeRole = options.timer;
+        state.updateVideoWhileScrubbing = options.timer;
         state.loopArmed = state.wantLoop;
         state.showAllMode = false;
         state.selectedClipIndex = null;

@@ -133,7 +133,7 @@ export class ElementReviewApp {
 
         // Cache appconfig early so later interactions do not need an extra fetch.
         this.appConfig = null;
-        this.appVersion = "v0.5.4";
+        this.appVersion = "v0.6.0";
         this.currentLanguage = "en";
         this.i18n = window.INDEX_I18N || {};
         this.buttonImageUrlCache = new Map();
