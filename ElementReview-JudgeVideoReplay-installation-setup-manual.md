@@ -14,9 +14,9 @@ JudgeVideoReplay is the panel replay client. It does not record video and does n
 
 ## Before Installing
 
-Confirm that all computers are on the same event network and that the VRO computer has a stable IP address. The judge and referee computers will use that VRO IP address to connect to ElementReview.
+Confirm that all computers are on the same event network and that the VRO computer has a stable (not dynamic) IP address. The judge and referee computers will use that VRO IP address to connect to ElementReview.
 
-On Windows 10 computers, ElementReview and JudgeVideoReplay require the Microsoft Edge WebView2 Runtime. If either app opens to a blank window or fails immediately on a Windows 10 computer, install the Microsoft Edge WebView2 Evergreen Runtime and start the app again. Do not install WebView2 separately on Windows 11 as this runtime is already included in Windows 11.
+On Windows 10 computers, ElementReview and JudgeVideoReplay require the Microsoft Edge WebView2 Runtime. If either app opens to a blank window or fails immediately on a Windows 10 computer, install the [Microsoft Edge WebView2 Evergreen Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/#download-section) and start the app again. Do not install WebView2 separately on Windows 11 as this runtime is already included in Windows 11.
 
 ## Recommended Computer Requirements
 
@@ -70,7 +70,7 @@ Do not bypass these warnings for files from an unknown source.
 
 1. Run the `ElementReview-Setup-<version>.exe` installer on the VRO computer.
 2. Start `ElementReview`.
-3. Open the settings screen.
+3. Open the settings screen by clicking the gear icon located at the top right of the window.
 4. Configure the CSS link, video source, encoding, and saved-video settings.
 5. Save settings and restart ElementReview.
 
@@ -78,7 +78,7 @@ Do not bypass these warnings for files from an unknown source.
 
 1. Run the `JudgeVideoReplay-Setup-<version>.exe` installer on every judge and referee computer.
 2. Start `JudgeVideoReplay`.
-3. Open the settings screen.
+3. Open the settings screen by clicking the gear icon located at the top right of the window.
 4. Set `Server IP address` to the IP address of the VRO computer.
 5. Set the role to `Judge` or `Referee`.
 6. Save settings.
@@ -91,15 +91,9 @@ Example:
 192.168.6.60
 ```
 
-JudgeVideoReplay connects to:
-
-```text
-http://<VRO computer IP>:5050
-```
-
 ## ElementReview Initial Configuration
 
-Open ElementReview settings on the VRO computer.
+Open ElementReview settings on the VRO computer by clicking the gear icon located at the top right of the window.
 
 ### CSS Integration
 
@@ -117,11 +111,23 @@ If integrating ElementReview with Online CSS or Offline CSS, set `CSS Link Type`
 None
 ```
 
-The display of executed element codes is currently only supported for Legacy CSS. Support for Online CSS and Offline CSS are forthcoming.
+The display of executed element codes and automatic determination of discipline/category/segment-specific halfway time values is currently only supported for Legacy CSS. Similar support for Online CSS and Offline CSS is forthcoming.
 
-When CSS integration is set to `None`, ElementReview cannot automatically detect category, discipline, segment, or halfway timing from CSS data. Use the manual `HW:` dropdown in the recording/replay UI when halfway timing is needed.
+When CSS integration is set to `None`, ElementReview cannot automatically detect category, discipline, segment, or halfway timing from CSS data. Use the manual `HW:` dropdown in the recording/replay UI to manually select the appropriate halfway time value when halfway timing is needed.
 
 ### Video Source
+
+Turn on Demo Mode for training or demonstration purposes. This mode uses a locally stored video instead of an RTSP video stream as an input source. The local video can be customized by replacing the file demovideo.mp4 located in the User\AppData\Local\ElementReview\data folder. 
+
+Supported video format:
+
+	Container: MP4
+	Video codec: H.264 / AVC
+	Frame rate: constant 30 or 60 fps
+	Resolution: 1920x1080 preferred, 1280x720 acceptable
+	Audio: optional; not needed for Demo Mode
+	Fast start: enabled
+	Avoid: HEVC/H.265, HDR, variable frame rate, unusual codecs
 
 Turn off Demo Mode for real event recording.
 
@@ -208,7 +214,7 @@ On the VRO computer:
 On each judge/referee computer:
 
 1. Start JudgeVideoReplay.
-2. Open settings.
+2. Open the settings screen by clicking the gear icon located at the top right of the window.
 3. Enter the VRO computer IP address.
 4. Select the correct role (Judge or Referee)
 5. Save settings.
@@ -234,7 +240,7 @@ If ElementReview does not show video:
 
 If judge replay video is low quality or stutters:
 
-- Increase low-res bitrate toward `4000` kbps for better quality if bandwidth allows.
-- Reduce low-res bitrate toward `2500` kbps if the network is congested.
+- Increase low-res bitrate toward `4000` kbps (possibly higher) for better quality if bandwidth allows.
+- Reduce low-res bitrate toward `2500` kbps (possibly lower) if the network is congested.
 - Confirm all clients have strong wired or wireless network connectivity.
 - Keep low-res GOP at `30` unless directed otherwise.
