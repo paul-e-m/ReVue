@@ -664,6 +664,10 @@
     function syncTimingPresetButtons() {
         const visible = state.showTimerControl && state.showTimingPresets && state.stopwatchEnabled;
         dom.timingPresetButtons?.classList.toggle("hidden", !visible);
+        const controlsEnabled = !!dom.playPause && !dom.playPause.disabled;
+        dom.timingPresetButtons?.querySelectorAll("button").forEach(button => {
+            button.disabled = !controlsEnabled || !state.showTimingPresets;
+        });
         requestAnimationFrame(adjustTransportButtonOverlap);
     }
 

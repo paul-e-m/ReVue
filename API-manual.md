@@ -291,7 +291,7 @@ Returns the app version:
 
 ```json
 {
-  "version": "v0.6.1"
+  "version": "v0.6.2"
 }
 ```
 

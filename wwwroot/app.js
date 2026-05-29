@@ -6,6 +6,13 @@ import { ShortcutKeysController } from "./app-shortcut-keys.js";
 // ElementReviewApp coordinates the shared operator UI state in index.html.
 // Backend session data stays authoritative, while ReplayController manages replay-local interactions.
 const LS_EDIT_KEY = "ElementReview_EditMode";
+const MANUAL_HALF_TIMING_PRESETS = {
+    None: { seconds: null, labelKey: "hwtNone" },
+    SeniorSP: { seconds: 80, labelKey: "hwtSeniorSp" },
+    SeniorFS: { seconds: 120, labelKey: "hwtSeniorFs" },
+    JuniorSP: { seconds: 80, labelKey: "hwtJuniorSp" },
+    JuniorFS: { seconds: 105, labelKey: "hwtJuniorFs" },
+};
 
 export class ElementReviewApp {
     constructor() {
@@ -78,6 +85,12 @@ export class ElementReviewApp {
             timelineRow: el("timelineRow"),
             timelineOverlay: el("timelineOverlay"),
             replayProgramTimeIndicator: el("replayProgramTimeIndicator"),
+            recordManualHalfwayCol: el("recordManualHalfwayCol"),
+            recordManualHalfwayTitle: el("recordManualHalfwayTitle"),
+            recordManualHalfwaySelect: el("recordManualHalfwaySelect"),
+            replayManualHalfwayCol: el("replayManualHalfwayCol"),
+            replayManualHalfwayTitle: el("replayManualHalfwayTitle"),
+            replayManualHalfwaySelect: el("replayManualHalfwaySelect"),
             recordCanvas: el("recordCanvas"),
             replayVideo: el("replayVideo"),
             replayScrub: el("replayScrub"),
@@ -145,6 +158,8 @@ export class ElementReviewApp {
         this.editToggleInput = null;
         this.autoplaySelectedClipEnabled = false;
         this.isSavingAutoplaySelectedClip = false;
+        this.manualHalfwayTimingPreset = "None";
+        this.isSavingManualHalfwayTiming = false;
 
         this.selectedClipIdx = null;
         this.selectedClipSeg = null;
@@ -248,6 +263,7 @@ export class ElementReviewApp {
             this.appConfig?.Language ?? this.currentLanguage
         );
         this.syncAutoplaySelectedClipFromConfig();
+        this.syncManualHalfwayTimingFromConfig();
         this.applyTranslations();
         this.syncHalfwayUi();
         this.preloadButtonImages();
@@ -258,10 +274,29 @@ export class ElementReviewApp {
     }
 
     hasHalfwayTimeAvailable() {
+        return this.hasManualHalfwayTimeAvailable() || this.hasAutomaticHalfwayTimeAvailable();
+    }
+
+    hasAutomaticHalfwayTimeAvailable() {
         if (!this.isHalfwayInterfaceEligible()) return false;
 
         const seconds = this.getSessionInfoTimeSeconds(this.sessionInfoPayload, "segmentProgHalfTime");
         return Number.isFinite(seconds) && seconds > 0;
+    }
+
+    hasManualHalfwayTimeAvailable() {
+        return Number.isFinite(this.getManualHalfwaySeconds());
+    }
+
+    getManualHalfwaySeconds() {
+        return MANUAL_HALF_TIMING_PRESETS[this.manualHalfwayTimingPreset]?.seconds ?? null;
+    }
+
+    shouldShowManualHalfwayControls(mode = this.state?.mode) {
+        const cssLink = this.normalizeCssLinkValue(this.appConfig?.CSSLink);
+        if (mode === "record") return cssLink === "None";
+        if (mode === "replay") return cssLink === "None";
+        return false;
     }
 
     normalizeSessionInfoMatchValue(value) {
@@ -288,6 +323,7 @@ export class ElementReviewApp {
     }
 
     syncHalfwayUi() {
+        this.syncManualHalfwayTimingControls();
         this.updateProgramStartButtons();
         this.updateReplayJumpHalfwayButton();
         this.updateHalfwayTimeValue();
@@ -302,7 +338,8 @@ export class ElementReviewApp {
 
     updateHalfwayTimeValue() {
         const halfwaySeconds = this.getHalfwaySeconds();
-        const show = Number.isFinite(halfwaySeconds) && halfwaySeconds > 0;
+        const cssLink = this.normalizeCssLinkValue(this.appConfig?.CSSLink);
+        const show = cssLink !== "None" && Number.isFinite(halfwaySeconds) && halfwaySeconds > 0;
         const text = show ? this.formatHalfwayTimeValue(halfwaySeconds) : "";
 
         const apply = (valueRef, colRef, cardRef) => {
@@ -596,6 +633,7 @@ export class ElementReviewApp {
             this.setText(this.editToggleWrap.querySelector(".editToggleLabel"), this.t("editToggleLabel"));
         }
         this.setAriaLabel(this.editToggleInput, this.t("editToggleAria"));
+        this.updateManualHalfwayTranslations();
         this.setText(this.refs.autoplaySelectedClipLabel, this.t("autoplaySelectedClipLabel"));
         this.setAriaLabel(this.refs.autoplaySelectedClipToggle, this.t("autoplaySelectedClipAria"));
         this.setAriaLabel(this.refs.editButtons, this.t("editControlsAria"));
@@ -638,6 +676,7 @@ export class ElementReviewApp {
         this.replay.updateLoopButtonsUI();
         this.replay.updateZoomHint();
         this.syncAutoplaySelectedClipToggle();
+        this.syncManualHalfwayTimingControls();
         this.shortcuts.refreshOverlay();
         this.updateClipCanvasSizing();
     }
@@ -736,6 +775,13 @@ export class ElementReviewApp {
         this.refs.recordProgramStartBtn?.addEventListener("click", () => this.startProgramTimer());
         this.refs.replayProgramStartBtn?.addEventListener("click", () => this.startProgramTimer());
         this.refs.replayJumpToHalfwayBtn?.addEventListener("click", () => this.shortcuts.jumpToHalfway());
+        for (const select of [this.refs.recordManualHalfwaySelect, this.refs.replayManualHalfwaySelect]) {
+            select?.addEventListener("change", () => {
+                this.setManualHalfwayTimingPreset(select.value).catch((err) => {
+                    alert(err?.message || "Unable to save halfway timing setting.");
+                });
+            });
+        }
         const bindLanguageSelect = (select) => {
             select?.addEventListener("change", () => {
                 this.setLanguage(select.value).catch((err) => {
@@ -852,6 +898,87 @@ export class ElementReviewApp {
         if (this.refs.autoplaySelectedClipToggle) {
             this.refs.autoplaySelectedClipToggle.checked = !!this.autoplaySelectedClipEnabled;
             this.refs.autoplaySelectedClipToggle.disabled = !!this.isSavingAutoplaySelectedClip;
+        }
+    }
+
+    normalizeManualHalfwayTimingPreset(value) {
+        const normalized = String(value || "").trim();
+        return Object.prototype.hasOwnProperty.call(MANUAL_HALF_TIMING_PRESETS, normalized)
+            ? normalized
+            : "None";
+    }
+
+    readManualHalfwayTimingFromConfig(config = this.appConfig) {
+        return this.normalizeManualHalfwayTimingPreset(config?.ManualHalfwayTimingPreset);
+    }
+
+    syncManualHalfwayTimingFromConfig(config = this.appConfig) {
+        if (this.isSavingManualHalfwayTiming) return;
+        this.manualHalfwayTimingPreset = this.readManualHalfwayTimingFromConfig(config);
+        this.syncManualHalfwayTimingControls();
+    }
+
+    updateManualHalfwayTranslations() {
+        this.setText(this.refs.recordManualHalfwayTitle, this.t("manualHalfwayTitle"));
+        this.setText(this.refs.replayManualHalfwayTitle, this.t("manualHalfwayTitle"));
+
+        for (const select of [this.refs.recordManualHalfwaySelect, this.refs.replayManualHalfwaySelect]) {
+            if (!select) continue;
+            this.setAriaLabel(select, this.t("manualHalfwaySelectAria"));
+            for (const option of Array.from(select.options)) {
+                const key = MANUAL_HALF_TIMING_PRESETS[option.value]?.labelKey;
+                if (key) option.textContent = this.t(key);
+            }
+        }
+    }
+
+    syncManualHalfwayTimingControls() {
+        this.updateManualHalfwayTranslations();
+
+        const recordVisible = this.shouldShowManualHalfwayControls("record");
+        const replayVisible = this.shouldShowManualHalfwayControls("replay");
+        const disabled = !!this.isSavingManualHalfwayTiming;
+
+        this.refs.recordManualHalfwayCol?.classList.toggle("hidden", !recordVisible);
+        this.refs.replayManualHalfwayCol?.classList.toggle("hidden", !replayVisible);
+
+        for (const select of [this.refs.recordManualHalfwaySelect, this.refs.replayManualHalfwaySelect]) {
+            if (!select) continue;
+            select.value = this.manualHalfwayTimingPreset;
+            select.disabled = disabled;
+        }
+    }
+
+    async setManualHalfwayTimingPreset(preset = this.manualHalfwayTimingPreset) {
+        const nextPreset = this.normalizeManualHalfwayTimingPreset(preset);
+        const previousPreset = this.manualHalfwayTimingPreset;
+        const baseConfig = this.appConfig ?? await apiGet(`/api/appconfig?ts=${Date.now()}`);
+
+        this.isSavingManualHalfwayTiming = true;
+        this.manualHalfwayTimingPreset = nextPreset;
+        this.appConfig = {
+            ...baseConfig,
+            ManualHalfwayTimingPreset: nextPreset,
+        };
+        this.syncHalfwayUi();
+        this.timeline.draw();
+
+        try {
+            const saved = await apiPost("/api/appconfig", this.appConfig);
+            this.appConfig = saved;
+            this.manualHalfwayTimingPreset = this.readManualHalfwayTimingFromConfig(saved);
+        } catch (err) {
+            this.appConfig = {
+                ...baseConfig,
+                ManualHalfwayTimingPreset: previousPreset,
+            };
+            this.manualHalfwayTimingPreset = previousPreset;
+            throw err;
+        } finally {
+            this.isSavingManualHalfwayTiming = false;
+            this.syncHalfwayUi();
+            this.timeline.draw();
+            this.updateUI();
         }
     }
 
@@ -1559,7 +1686,14 @@ export class ElementReviewApp {
     }
 
     getHalfwaySeconds() {
-        if (!this.hasHalfwayTimeAvailable()) return null;
+        const manualSeconds = this.getManualHalfwaySeconds();
+        if (Number.isFinite(manualSeconds) && manualSeconds > 0) {
+            return manualSeconds;
+        }
+
+        if (this.normalizeCssLinkValue(this.appConfig?.CSSLink) === "None") return null;
+
+        if (!this.hasAutomaticHalfwayTimeAvailable()) return null;
 
         const seconds = this.getSessionInfoTimeSeconds(this.sessionInfoPayload, "segmentProgHalfTime");
         return Number.isFinite(seconds) && seconds > 0 ? seconds : null;
@@ -1610,6 +1744,7 @@ export class ElementReviewApp {
     updateReplayStatusPanel() {
         const elementCount = String(this.getElementCount());
         const reviewCount = String(this.getReviewCount());
+        const showCssCounts = this.normalizeCssLinkValue(this.appConfig?.CSSLink) !== "None";
 
         const countPairs = [
             [this.refs.replayElementsValue, elementCount],
@@ -1618,6 +1753,7 @@ export class ElementReviewApp {
 
         for (const [el, value] of countPairs) {
             if (el) el.textContent = value;
+            el?.closest(".replayCountCol")?.classList.toggle("hidden", !showCssCounts);
         }
 
         const dotPairs = [
@@ -1781,6 +1917,7 @@ export class ElementReviewApp {
             this.appConfig = config;
             this.syncLanguageFromConfig(config);
             this.syncAutoplaySelectedClipFromConfig(config);
+            this.syncManualHalfwayTimingFromConfig(config);
             this.syncHalfwayUi();
 
             if (config?.DemoMode) {

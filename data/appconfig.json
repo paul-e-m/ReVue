@@ -16,5 +16,6 @@
   "CSSServerHost": "",
   "SaveVideos": false,
   "SavedVideosFolder": "C:/Event_Videos",
-  "AutoplaySelectedClip": false
+  "AutoplaySelectedClip": false,
+  "ManualHalfwayTimingPreset": "None"
 }

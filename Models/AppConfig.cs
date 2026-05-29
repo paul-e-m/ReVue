@@ -41,7 +41,7 @@ public class AppConfig
     public int LowresVideoGop { get; set; } = 60;
 
     [JsonPropertyOrder(11)]
-    public string CSSLink { get; set; } = "Legacy";
+    public string CSSLink { get; set; } = "None";
 
     [JsonPropertyOrder(12)]
     public string DatabaseLocation { get; set; } = "localhost";
@@ -60,4 +60,7 @@ public class AppConfig
 
     [JsonPropertyOrder(17)]
     public bool AutoplaySelectedClip { get; set; } = false;
+
+    [JsonPropertyOrder(18)]
+    public string ManualHalfwayTimingPreset { get; set; } = "None";
 }

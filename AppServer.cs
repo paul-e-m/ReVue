@@ -189,16 +189,13 @@ public static class AppServer
                 cfg.HighresVideoGop = 10;
             }
 
-            var cssLink = string.IsNullOrWhiteSpace(cfg.CSSLink) ? "None" : cfg.CSSLink.Trim();
-            cfg.CSSLink =
-                cssLink.Equals("Legacy", StringComparison.OrdinalIgnoreCase) ? "Legacy" :
-                cssLink.Equals("Custom", StringComparison.OrdinalIgnoreCase) ? "Custom" :
-                cssLink.Equals("New", StringComparison.OrdinalIgnoreCase) ||
-                cssLink.Equals("Online CSS", StringComparison.OrdinalIgnoreCase) ||
-                cssLink.Equals("OnlineCSS", StringComparison.OrdinalIgnoreCase) ? "Online CSS" :
-                cssLink.Equals("Offline CSS", StringComparison.OrdinalIgnoreCase) ||
-                cssLink.Equals("OfflineCSS", StringComparison.OrdinalIgnoreCase) ? "Offline CSS" :
-                "None";
+            var cssLink = cfg.CSSLink?.Trim();
+            cfg.CSSLink = string.IsNullOrWhiteSpace(cssLink) ? "None" : cssLink;
+            cfg.ManualHalfwayTimingPreset = cfg.ManualHalfwayTimingPreset?.Trim() switch
+            {
+                "None" or "SeniorSP" or "SeniorFS" or "JuniorSP" or "JuniorFS" => cfg.ManualHalfwayTimingPreset.Trim(),
+                _ => "None"
+            };
 
             if (cfg.DemoMode)
             {
@@ -343,7 +340,9 @@ public static class AppServer
                     IsMissingOrBlankConfigProperty(json, "highresVideoGop") ||
                     IsMissingOrBlankConfigProperty(json, "lowresVideoBitrate") ||
                     IsMissingOrBlankConfigProperty(json, "lowresVideoGop") ||
-                    IsMissingOrBlankConfigProperty(json, "AutoplaySelectedClip");
+                    IsMissingOrBlankConfigProperty(json, "CSSLink") ||
+                    IsMissingOrBlankConfigProperty(json, "AutoplaySelectedClip") ||
+                    IsMissingOrBlankConfigProperty(json, "ManualHalfwayTimingPreset");
                 var loadedConfig = JsonSerializer.Deserialize<AppConfig>(json, jsonOpts);
                 if (loadedConfig != null &&
                     IsMissingOrBlankConfigProperty(json, "highresVideoGop") &&

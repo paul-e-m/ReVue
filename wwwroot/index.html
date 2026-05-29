@@ -122,11 +122,22 @@
                                                         <span id="programTimerDisplay" class="recordTimerValue">00:00.00</span>
                                                     </div>
                                                 </div>
+
                                             </div>
 
                                             <div class="recordActionSpacer" aria-hidden="true"></div>
 
                                             <div class="recordActionCol recordActionColLanguage">
+                                                <div id="recordManualHalfwayCol" class="manualHalfwayCol hidden">
+                                                    <span id="recordManualHalfwayTitle" class="manualHalfwayTitle">Halfway</span>
+                                                    <select id="recordManualHalfwaySelect" class="manualHalfwaySelect" aria-label="Halfway time">
+                                                        <option value="None">None</option>
+                                                        <option value="SeniorSP">Senior SP (1:20)</option>
+                                                        <option value="SeniorFS">Senior FS (2:00)</option>
+                                                        <option value="JuniorSP">Junior SP (1:20)</option>
+                                                        <option value="JuniorFS">Junior FS (1:45)</option>
+                                                    </select>
+                                                </div>
                                                 <select id="recordLanguageSelect" class="topBarLanguageSelect" aria-label="Language">
                                                     <option value="en">English</option>
                                                     <option value="fr">Français</option>
@@ -218,11 +229,22 @@
                                             <div class="recordActionCol replayReviewCol" aria-label="Review timer">
                                                 <div id="reviewTimer" class="reviewTimer">REVIEW: 00:00</div>
                                             </div>
+
                                         </div>
 
                                         <div class="recordActionSpacer" aria-hidden="true"></div>
 
                                         <div class="recordActionCol recordActionColLanguage">
+                                            <div id="replayManualHalfwayCol" class="manualHalfwayCol hidden">
+                                                <span id="replayManualHalfwayTitle" class="manualHalfwayTitle">Halfway</span>
+                                                <select id="replayManualHalfwaySelect" class="manualHalfwaySelect" aria-label="Halfway time">
+                                                    <option value="None">None</option>
+                                                    <option value="SeniorSP">Senior SP (1:20)</option>
+                                                    <option value="SeniorFS">Senior FS (2:00)</option>
+                                                    <option value="JuniorSP">Junior SP (1:20)</option>
+                                                    <option value="JuniorFS">Junior FS (1:45)</option>
+                                                </select>
+                                            </div>
                                             <select id="replayLanguageSelect" class="topBarLanguageSelect" aria-label="Language">
                                                 <option value="en">English</option>
                                                 <option value="fr">Français</option>
