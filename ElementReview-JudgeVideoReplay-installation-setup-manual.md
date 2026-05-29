@@ -6,7 +6,7 @@ This manual covers a normal event setup with one VRO computer and separate judge
 
 Install `ElementReview` only on the VRO computer.
 
-The VRO computer records the incoming video, creates the replay files, runs the local ElementReview server, and serves replay clips to the judging panel.
+The VRO computer records the incoming video, creates the replay files, runs the local ElementReview UI for the VRO, and serves replay clips to the judging panel.
 
 Install `JudgeVideoReplay` on every judge and referee computer.
 
@@ -32,7 +32,7 @@ Minimum recommended VRO computer for ElementReview:
 | Storage | SSD, `1 TB` minimum with plenty of free space |  |
 | Network | Wired Gigabit Ethernet |  |
 
-Do not use a mechanical hard drive for the VRO computer. ElementReview writes and deletes video data continuously, so an SSD gives better recording/replay performance. A `1 TB` or larger SSD is recommended because smaller drives can fill quickly and may wear faster when used repeatedly for video recording workloads.
+Do not use a mechanical hard drive for the VRO computer. Avoid small capacity, or bargain no name drives for the VRO computer. ElementReview writes and deletes video data continuously, so an SSD gives better recording/replay performance. A `1 TB` or larger SSD is recommended because smaller drives can fill quickly and may wear faster when used repeatedly for video recording workloads. Ensure a minimum 15-20% drive capacity is available at all times.
 
 For JudgeVideoReplay computers, the requirements are lighter because they receive and play back low-res replay video rather than recording and encoding the main feed.
 
@@ -117,7 +117,7 @@ When CSS integration is set to `None`, ElementReview cannot automatically detect
 
 ### Video Source
 
-Turn on Demo Mode for training or demonstration purposes. This mode uses a locally stored video instead of an RTSP video stream as an input source. The local video can be customized by replacing the file demovideo.mp4 located in the User\AppData\Local\ElementReview\data folder. 
+Turn on Demo Mode for training or demonstration purposes. This mode uses a locally stored video instead of an RTSP video stream as an input source. The local video can be customized by replacing the file `demovideo.mp4` located in `User\AppData\Local\ElementReview\data`. 
 
 Supported video format:
 
@@ -147,7 +147,7 @@ rtsp://192.168.1.168:8554/video
 
 Set `RTSP Transport Protocol` to `UDP` in most cases. UDP is usually the best choice on a clean, local event network because it has lower latency.
 
-Use `TCP` only if the network is unreliable or if instructed by Skate Canada technical support.
+Use `TCP` only if the network is unreliable or if unable to establish RTSP stream connection using `UDP`.
 
 ### Encoding Settings
 
@@ -161,7 +161,7 @@ Recommended settings:
 
 Use `2500` kbps when bandwidth is limited or many clients are connected. Use `4000` kbps when the event network is strong and better judge replay quality is desired.
 
-Enable `Use Hardware Encoding` in most situations. Disable it only if directed by Skate Canada technical support or if hardware encoding causes a confirmed issue on the VRO computer.
+Enable `Use Hardware Encoding` in most situations. Disable it only if hardware encoding causes a confirmed issue on the VRO computer.
 
 ## Firewall and Network Requirements
 
