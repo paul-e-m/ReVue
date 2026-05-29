@@ -48,6 +48,15 @@ Minimum recommended judge/referee computer:
 
 The VRO computer must use wired Gigabit Ethernet. Judge and referee laptops can usually run successfully on a good closed event Wi-Fi LAN, provided the wireless network is not shared with spectators or general venue traffic.
 
+Recommended live video encoder:
+
+- Use a dedicated encoder that provides an RTSP stream to the VRO computer.
+- If the video camera supports SDI output (more reliable than HDMI), the AVMatrix SE-1117 or a similar SDI-to-RTSP encoder is recommended.
+- The preferred live encoder feed is `1080p 60 fps`.
+- `1080p 30 fps` is acceptable.
+- `1080i 60` is acceptable when progressive output is not available. In normal video terminology, `1080i 60` means 60 interlaced fields per second, which is effectively 30 full frames per second.
+- The important requirement is consistency: the configured/demo video frame rate should match the frame rate produced by the encoder stream.
+
 ## Windows Defender and SmartScreen
 
 Windows may warn about newly downloaded or newly provided installers, especially before the app has a broad reputation with Microsoft SmartScreen.
@@ -123,7 +132,7 @@ Supported video format:
 
 	Container: MP4
 	Video codec: H.264 / AVC
-	Frame rate: constant 30 or 60 fps
+	Frame rate: constant, matching the frame rate produced by the video encoder
 	Resolution: 1920x1080 preferred, 1280x720 acceptable
 	Audio: optional; not needed for Demo Mode
 	Fast start: enabled
@@ -181,23 +190,12 @@ http://0.0.0.0:5050
 
 JudgeVideoReplay uses TCP port `5050` for status, replay data, and video file downloads from the VRO computer.
 
-The code also uses local sidecar services on the VRO computer, including:
-
-```text
-TCP 8889
-UDP 8189
-TCP 8554 on 127.0.0.1
-TCP 9997 on 127.0.0.1
-```
-
-These sidecar ports are used by ElementReview and MediaMTX on the VRO computer. JudgeVideoReplay clients do not normally need direct access to them. The important client-facing firewall requirement is inbound TCP `5050` on the VRO computer.
-
 If Windows Firewall prompts when ElementReview first runs, allow access on the event/private network.
 
 If connections still fail, options include:
 
 - Add an inbound Windows Firewall rule allowing TCP `5050` for `ElementReview.exe`.
-- Add an inbound Windows Firewall rule allowing TCP `5050` for the event network profile.
+- Add an inbound Windows Firewall rule allowing TCP `5050` for the network profile.
 - Temporarily turn off Windows Firewall on the VRO computer for the event network.
 
 Turning off Windows Firewall is simple for troubleshooting, but a targeted TCP `5050` allow rule is preferred when possible to maintain network security.
@@ -209,7 +207,7 @@ On the VRO computer:
 1. Start ElementReview.
 2. Confirm the VRO computer is connected to the event network.
 3. Confirm the VRO IP address.
-4. Confirm TCP `5050` is allowed through the firewall.
+4. Confirm TCP port `5050` is allowed through the firewall.
 
 On each judge/referee computer:
 
@@ -228,7 +226,7 @@ If JudgeVideoReplay stays on the waiting screen:
 - Confirm the VRO IP address in JudgeVideoReplay is correct.
 - Confirm all computers are on the same LAN/VLAN.
 - Confirm the event network does not block client-to-client traffic.
-- Confirm TCP `5050` is open inbound on the VRO computer.
+- Confirm TCP port `5050` is open inbound on the VRO computer.
 
 If ElementReview does not show video:
 
@@ -240,7 +238,7 @@ If ElementReview does not show video:
 
 If judge replay video is low quality or stutters:
 
-- Increase low-res bitrate toward `4000` kbps (possibly higher) for better quality if bandwidth allows.
-- Reduce low-res bitrate toward `2500` kbps (possibly lower) if the network is congested.
+- Increase low-res bitrate toward `4000` kbps (or possibly even higher) for better quality if bandwidth allows.
+- Reduce low-res bitrate toward `2500` kbps (or possibly even lower) if the network is congested.
 - Confirm all clients have strong wired or wireless network connectivity.
 - Keep low-res GOP at `30` unless directed otherwise.
