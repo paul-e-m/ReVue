@@ -29,8 +29,8 @@ Minimum recommended VRO computer for ElementReview:
 | CPU | Recent Intel Core i5/i7 or AMD Ryzen 5/7, 4 cores or better | Intel Core i7/i9 or AMD Ryzen 7/9, 6 cores or better |
 | RAM | `16 GB` | `32 GB` if available |
 | Graphics | Integrated graphics may work for basic use | Hardware video encoding support is strongly preferred, such as Intel Quick Sync, NVIDIA NVENC, or AMD hardware encoding |
-| Storage | SSD, `1 TB` minimum | Larger SSD with plenty of free space |
-| Network | Gigabit Ethernet | Wired Gigabit Ethernet to the event network |
+| Storage | SSD, `1 TB` minimum with plenty of free space |  |
+| Network | Wired Gigabit Ethernet |  |
 
 Do not use a mechanical hard drive for the VRO computer. ElementReview writes and deletes video data continuously, so an SSD gives better recording/replay performance. A `1 TB` or larger SSD is recommended because smaller drives can fill quickly and may wear faster when used repeatedly for video recording workloads.
 
