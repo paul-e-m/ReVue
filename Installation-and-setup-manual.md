@@ -6,21 +6,23 @@ This manual covers a normal event setup with one VRO computer and separate judge
 
 Install `ElementReview` only on the VRO computer.
 
-The VRO computer records the incoming video, creates the replay files, runs the local ElementReview UI for the VRO, and serves replay clips to the judging panel.
+The VRO computer records the incoming video, creates the replay files, runs the local ElementReview interface for the technical panel, and serves replay clips to the judging panel.
 
 Install `JudgeVideoReplay` on every judge and referee computer.
 
-JudgeVideoReplay is the panel replay client. It does not record video and does not replace ElementReview on the VRO computer.
+JudgeVideoReplay is the panel replay client. 
 
 ## Before Installing
 
-Confirm that all computers are on the same event network and that the VRO computer has a stable (not dynamic) IP address. The judge and referee computers will use that VRO IP address to connect to ElementReview.
+Confirm that all computers are on the same event network and that the VRO computer has a stable (not dynamic) IP address.
 
-On Windows 10 computers, ElementReview and JudgeVideoReplay require the Microsoft Edge WebView2 Runtime. If either app opens to a blank window or fails immediately on a Windows 10 computer, install the [Microsoft Edge WebView2 Evergreen Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/#download-section) and start the app again. Do not install WebView2 separately on Windows 11 as this runtime is already included in Windows 11.
+On some Windows 10 computers, ElementReview and JudgeVideoReplay require the Microsoft Edge WebView2 Runtime. If either app opens to a blank window or fails immediately on a Windows 10 computer, install the [Microsoft Edge WebView2 Evergreen Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/#download-section) and start the app again. 
+
+Do not install WebView2 separately on Windows 11 as this runtime is already included in Windows 11.
 
 ## Recommended Computer Requirements
 
-ElementReview does the heavier work. It records the incoming stream, creates high-res and low-res replay video, serves replay files to the panel, and writes/deletes a large amount of video data during an event.
+ElementReview does the heavier work. It records the incoming stream, creates high-res and low-res replay video files, serves replay files to the panel, and writes/deletes a large amount of video data during an event.
 
 Minimum recommended VRO computer for ElementReview:
 
@@ -29,10 +31,10 @@ Minimum recommended VRO computer for ElementReview:
 | CPU | Recent Intel Core i5/i7 or AMD Ryzen 5/7, 4 cores or better | Intel Core i7/i9 or AMD Ryzen 7/9, 6 cores or better |
 | RAM | `16 GB` | `32 GB` if available |
 | Graphics | Integrated graphics may work for basic use | Hardware video encoding support is strongly preferred, such as Intel Quick Sync, NVIDIA NVENC, or AMD hardware encoding |
-| Storage | SSD, `1 TB` minimum with plenty of free space |  |
-| Network | Wired Gigabit Ethernet |  |
+| Storage | SSD, `1 TB` minimum |  |
+| Network | Wired Gigabit Ethernet is recommended |  |
 
-Do not use a mechanical hard drive for the VRO computer. Avoid small capacity, or bargain no name drives for the VRO computer. ElementReview writes and deletes video data continuously, so an SSD gives better recording/replay performance. A `1 TB` or larger SSD is recommended because smaller drives can fill quickly and may wear faster when used repeatedly for video recording workloads. Ensure a minimum 15-20% drive capacity is available at all times.
+Do not use a mechanical hard drive for the VRO computer. Avoid small capacity, or bargain no-name drives for the VRO computer. ElementReview writes and deletes video data continuously, so an SSD gives better recording/replay performance. Ensure a minimum 15-20% drive capacity is available at all times.
 
 For JudgeVideoReplay computers, the requirements are lighter because they receive and play back low-res replay video rather than recording and encoding the main feed.
 
@@ -46,15 +48,13 @@ Minimum recommended judge/referee computer:
 | Storage | SSD recommended |
 | Network | Reliable Wi-Fi or Ethernet |
 
-The VRO computer must use wired Gigabit Ethernet. Judge and referee laptops can usually run successfully on a good closed event Wi-Fi LAN, provided the wireless network is not shared with spectators or general venue traffic.
+Although the VRO computer should employ wired Gigabit Ethernet, judge and referee laptops can usually run successfully on a good closed event Wi-Fi LAN, provided the wireless network is not shared with spectators or general venue traffic.
 
 Recommended live video encoder:
 
 - Use a dedicated encoder that provides an RTSP stream to the VRO computer.
-- If the video camera supports SDI output (more reliable than HDMI), the AVMatrix SE-1117 or a similar SDI-to-RTSP encoder is recommended.
-- The preferred live encoder feed is `1080p 60 fps`.
-- `1080p 30 fps` is acceptable.
-- `1080i 60` is acceptable when progressive output is not available. In normal video terminology, `1080i 60` means 60 interlaced fields per second, which is effectively 30 full frames per second.
+- If the video camera supports SDI output, the AVMatrix SE-1117 or a similar SDI streaming encoder is recommended. HDMI streaming encoders, such as the J-Tech ENCH-4 HDMI H.264 IPTV Encoder, are also acceptable. However, SDI connections are designed for professional video environments, offer more secure cabling over longer runs, and are generally less prone to accidental disconnection or signal issues than HDMI.
+- The preferred live encoder feed is `1080p 60 fps`. `1080p 30 fps` is acceptable if 60 fpd is not available. `1080i 60` is also acceptable when progressive output is not available. In normal video terminology, `1080i 60` means 60 interlaced fields per second, which is effectively 30 full frames per second. 
 - The important requirement is consistency: the configured/demo video frame rate should match the frame rate produced by the encoder stream.
 
 ## Windows Defender and SmartScreen
@@ -120,13 +120,11 @@ If integrating ElementReview with Online CSS or Offline CSS, set `CSS Link Type`
 None
 ```
 
-The display of executed element codes and automatic determination of discipline/category/segment-specific halfway time values is currently only supported for Legacy CSS. Similar support for Online CSS and Offline CSS is forthcoming.
-
-When CSS integration is set to `None`, ElementReview cannot automatically detect category, discipline, segment, or halfway timing from CSS data. Use the manual `HW:` dropdown in the recording/replay UI to manually select the appropriate halfway time value when halfway timing is needed.
+The display of executed element codes and automatic determination of specific halfway time values is currently only supported for Legacy CSS. Similar support for Online CSS and Offline CSS is forthcoming. Use the manual `HW:` dropdown in the recording/replay UI to manually select the appropriate halfway time value when halfway timing is needed.
 
 ### Video Source
 
-Turn on Demo Mode for training or demonstration purposes. This mode uses a locally stored video instead of an RTSP video stream as an input source. The local video can be customized by replacing the file `demovideo.mp4` located in `User\AppData\Local\ElementReview\data`. 
+Turn on Demo Mode for training or demonstration purposes. This mode uses a locally stored video instead of an RTSP video stream as the input source. The local video can be customized by replacing the file `demovideo.mp4` located in `User\AppData\Local\ElementReview\data`. 
 
 Supported video format:
 
@@ -136,7 +134,8 @@ Supported video format:
 	Resolution: 1920x1080 preferred, 1280x720 acceptable
 	Audio: optional; not needed for Demo Mode
 	Fast start: enabled
-	Avoid: HEVC/H.265, HDR, variable frame rate, unusual codecs
+
+Avoid: HEVC/H.265, HDR, variable frame rate, unusual codecs.
 
 Turn off Demo Mode for real event recording.
 
@@ -156,7 +155,7 @@ rtsp://192.168.1.168:8554/video
 
 Set `RTSP Transport Protocol` to `UDP` in most cases. UDP is usually the best choice on a clean, local event network because it has lower latency.
 
-Use `TCP` only if the network is unreliable or if unable to establish RTSP stream connection using `UDP`.
+Use `TCP` only if unable to establish a reliable RTSP stream connection using `UDP`.
 
 ### Encoding Settings
 
@@ -168,9 +167,11 @@ Recommended settings:
 | Low-res Video GOP | `30` | Used by JudgeVideoReplay clients. |
 | Low-res Video Bitrate | `2500` to `4000` kbps | Higher values improve quality but use more network bandwidth. |
 
-Use `2500` kbps when bandwidth is limited or many clients are connected. Use `4000` kbps when the event network is strong and better judge replay quality is desired.
+Note that the High-res Video GOP should be set to `10` or lower when the video input source frame rate is 60 fps. This value should be set to `5` or lower when the input video souce is 30 fps.
 
-Enable `Use Hardware Encoding` in most situations. Disable it only if hardware encoding causes a confirmed issue on the VRO computer.
+Use `2500` kbps when bandwidth is limited or many clients are connected. Use `4000` kbps or higher when the event network is strong and better judge replay quality is desired.
+
+Enable `Use Hardware Encoding` in most situations. Disable it only if hardware encoding causes a confirmed video encoding issue. Disabling Hardware Encoding will significantly increase the CPU load on the VRO computer. CPU load should be monitored under real event demands following intial configuration.
 
 ## Firewall and Network Requirements
 
