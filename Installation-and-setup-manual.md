@@ -1,4 +1,4 @@
-# ElementReview and JudgeVideoReplay Installation and Setup Manual
+# ElementReview and JudgeVideoReplay Installation and Setup Instructions
 
 This manual covers a normal event setup with one VRO computer and separate judge/referee computers.
 
@@ -11,14 +11,6 @@ The VRO computer records the incoming video, creates the replay files, runs the 
 Install `JudgeVideoReplay` on every judge and referee computer.
 
 JudgeVideoReplay is the panel replay client. 
-
-## Before Installing
-
-Confirm that all computers are on the same event network and that the VRO computer has a stable (not dynamic) IP address.
-
-On some Windows 10 computers, ElementReview and JudgeVideoReplay require the Microsoft Edge WebView2 Runtime. If either app opens to a blank window or fails immediately on a Windows 10 computer, install the [Microsoft Edge WebView2 Evergreen Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/#download-section) and start the app again. 
-
-Do not install WebView2 separately on Windows 11 as this runtime is already included in Windows 11.
 
 ## Recommended Computer Requirements
 
@@ -74,6 +66,14 @@ If Windows Defender or the browser marks the file as suspicious:
 3. If the file is blocked after copying, right-click the installer, choose `Properties`, check `Unblock` if present, then click `OK`.
 
 Do not bypass these warnings for files from an unknown source.
+
+## Before Installing
+
+Confirm that all computers are on the same event network and that the VRO computer has a stable (not dynamic) IP address.
+
+On some Windows 10 computers, ElementReview and JudgeVideoReplay require the Microsoft Edge WebView2 Runtime. If either app opens to a blank window or fails immediately on a Windows 10 computer, install the [Microsoft Edge WebView2 Evergreen Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/#download-section) and start the app again. 
+
+Do not install WebView2 separately on Windows 11 as this runtime is already included in Windows 11.
 
 ## Install ElementReview on the VRO Computer
 
