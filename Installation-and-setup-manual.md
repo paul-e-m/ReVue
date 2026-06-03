@@ -163,7 +163,7 @@ Recommended settings:
 
 | Setting | Recommended value | Notes |
 | --- | --- | --- |
-| High-res Video GOP | `10` | Used by ElementReview on the VRO computer. Lower GOP helps responsive seeking. |
+| High-res Video GOP | `2` | Used by ElementReview on the VRO computer. Lower GOP helps responsive seeking. |
 | Low-res Video GOP | `30` | Used by JudgeVideoReplay clients. |
 | Low-res Video Bitrate | `2500` to `4000` kbps | Higher values improve quality but use more network bandwidth. |
 
