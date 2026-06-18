@@ -3,6 +3,7 @@ obj/
 .vs/
 tools/
 artifacts/
+dist/
 *.csproj.user
 *.mp4
 data/demovideo.mp4
