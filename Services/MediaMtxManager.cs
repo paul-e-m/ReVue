@@ -1,9 +1,9 @@
 using Microsoft.AspNetCore.Hosting;
 using System.Diagnostics;
 using System.Text;
-using ElementReview.Models;
+using ReVueVRO.Models;
 
-namespace ElementReview.Services;
+namespace ReVueVRO.Services;
 
 // Owns the lightweight MediaMTX sidecar that relays the configured RTSP source
 // into a stable local endpoint for the browser UI and recorder pipeline.
@@ -14,14 +14,11 @@ public class MediaMtxManager
 
     private readonly string _contentRoot;
     private readonly string _toolsDir;
-    private readonly string _dataDir;
-
     public MediaMtxManager(IWebHostEnvironment env)
     {
         _contentRoot = env.ContentRootPath;
         _toolsDir = Path.Combine(_contentRoot, "tools");
-        _dataDir = AppPaths.LocalDataDir;
-        Directory.CreateDirectory(_dataDir);
+        Directory.CreateDirectory(AppPaths.LocalVroAppDir);
     }
 
     public string WebRtcEmbedUrl(string pathName = "mystream")

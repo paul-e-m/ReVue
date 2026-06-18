@@ -1,7 +1,7 @@
 import { el, clamp, isTypingTarget } from "./app-utils.js";
 
 // ShortcutKeysController owns global key handling and the hold-Tab shortcut overlay.
-// Recording and replay actions still execute through ElementReviewApp and ReplayController.
+// Recording and replay actions still execute through ReVueVROApp and ReplayController.
 export class ShortcutKeysController {
     constructor(app) {
         this.app = app;

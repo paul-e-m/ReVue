@@ -1,8 +1,8 @@
 using System.Text.Json.Serialization;
 
-namespace ElementReview.Models;
+namespace ReVueJudge.Models;
 
-public sealed class JudgeVideoReplayConfig
+public sealed class ReVueJudgeConfig
 {
     [JsonPropertyOrder(0)]
     public string ServerIp { get; set; } = "127.0.0.1";
@@ -17,13 +17,13 @@ public sealed class JudgeVideoReplayConfig
     public int UiZoomPercent { get; set; } = 100;
 
     [JsonPropertyOrder(4)]
-    public JudgeVideoReplayRoleUiConfig? JudgeUI { get; set; }
+    public ReVueJudgeRoleUiConfig? JudgeUI { get; set; }
 
     [JsonPropertyOrder(5)]
-    public JudgeVideoReplayRoleUiConfig? RefereeUI { get; set; }
+    public ReVueJudgeRoleUiConfig? RefereeUI { get; set; }
 }
 
-public sealed class JudgeVideoReplayRoleUiConfig
+public sealed class ReVueJudgeRoleUiConfig
 {
     [JsonPropertyOrder(0)]
     public object? DisplayTimerStopwatch { get; set; }

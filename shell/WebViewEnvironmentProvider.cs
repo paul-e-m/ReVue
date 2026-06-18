@@ -1,6 +1,6 @@
 using Microsoft.Web.WebView2.Core;
 
-namespace ElementReview.Shell;
+namespace ReVueVRO.Shell;
 
 internal static class WebViewEnvironmentProvider
 {
@@ -11,7 +11,7 @@ internal static class WebViewEnvironmentProvider
 
     private static async Task<CoreWebView2Environment> CreateSharedEnvironmentAsync()
     {
-        var userDataFolder = AppPaths.WebView2UserDataDir;
+        var userDataFolder = AppPaths.LocalVroWebView2UserDataDir;
 
         Directory.CreateDirectory(userDataFolder);
 

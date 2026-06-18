@@ -1,8 +1,10 @@
-namespace ElementReview;
+namespace ReVueVRO;
 
 internal static class AppPaths
 {
-    private const string AppFolderName = "ElementReview";
+    private const string AppFolderName = "ReVue";
+    private const string VroAppFolderName = "ReVue-VRO";
+    private const string RemoteReplayConfigFileName = "remote-replay.json";
 
     public static string LocalAppRootDir =>
         Path.Combine(
@@ -10,17 +12,18 @@ internal static class AppPaths
             AppFolderName);
 
     public static string LocalDataDir => Path.Combine(LocalAppRootDir, "data");
-    public static string LocalConfigPath => Path.Combine(LocalDataDir, "appconfig.json");
-    public static string LocalJudgeVideoReplayDataDir => Path.Combine(LocalDataDir, "JudgeVideoReplay");
-    public static string LocalJudgeVideoReplayConfigPath => Path.Combine(LocalJudgeVideoReplayDataDir, "appconfig.json");
+    public static string LocalMediaDir => Path.Combine(LocalAppRootDir, "media");
+    public static string LocalVroAppDir => Path.Combine(LocalAppRootDir, VroAppFolderName);
+    public static string LocalVroConfigPath => Path.Combine(LocalVroAppDir, "appconfig.json");
+    public static string LocalVroRemoteReplayConfigPath => Path.Combine(LocalVroAppDir, RemoteReplayConfigFileName);
+    public static string LocalVroWebView2UserDataDir => Path.Combine(LocalVroAppDir, "WebView2");
+    public static string LocalMediaMtxConfigPath => Path.Combine(LocalVroAppDir, "mediamtx.yml");
     public static string LocalElementsPath => Path.Combine(LocalDataDir, "SessionInfo.json");
-    public static string LocalDemoVideoPath => Path.Combine(LocalDataDir, "demovideo.mp4");
-    public static string LocalMediaMtxConfigPath => Path.Combine(LocalDataDir, "mediamtx.yml");
-    public static string LocalHighResVideoPath => Path.Combine(LocalDataDir, "current-high-res.mp4");
-    public static string LocalHighResTempVideoPath => Path.Combine(LocalDataDir, "current-high-res-recording.mp4");
-    public static string LocalLowResVideoPath => Path.Combine(LocalDataDir, "current-low-res.mp4");
-    public static string LocalLowResTempVideoPath => Path.Combine(LocalDataDir, "current-low-res-recording.mp4");
-    public static string WebView2UserDataDir => Path.Combine(LocalAppRootDir, "WebView2");
+    public static string LocalDemoVideoPath => Path.Combine(LocalMediaDir, "demovideo.mp4");
+    public static string LocalHighResVideoPath => Path.Combine(LocalMediaDir, "current-high-res.mp4");
+    public static string LocalHighResTempVideoPath => Path.Combine(LocalMediaDir, "current-high-res-recording.mp4");
+    public static string LocalLowResVideoPath => Path.Combine(LocalMediaDir, "current-low-res.mp4");
+    public static string LocalLowResTempVideoPath => Path.Combine(LocalMediaDir, "current-low-res-recording.mp4");
 
     public static string DefaultSavedVideosFolder
     {
@@ -38,6 +41,12 @@ internal static class AppPaths
     public static void EnsureLocalDataDirectory()
     {
         Directory.CreateDirectory(LocalDataDir);
+        Directory.CreateDirectory(LocalMediaDir);
+    }
+
+    public static void EnsureVroDataDirectory()
+    {
+        Directory.CreateDirectory(LocalVroAppDir);
     }
 
     public static string GetBundledDataDir(string contentRoot) => Path.Combine(contentRoot, "data");
@@ -69,16 +78,41 @@ internal static class AppPaths
         return LocalElementsPath;
     }
 
-    public static void TryMigrateLegacyConfig(string contentRoot)
+    public static void EnsureSharedDataFiles(string contentRoot)
     {
-        if (File.Exists(LocalConfigPath))
-            return;
-
-        var legacyConfigPath = GetBundledConfigPath(contentRoot);
-        if (!File.Exists(legacyConfigPath))
-            return;
-
         EnsureLocalDataDirectory();
-        File.Copy(legacyConfigPath, LocalConfigPath, overwrite: false);
+
+        if (!File.Exists(LocalElementsPath))
+        {
+            var bundledElementsPath = GetBundledElementsPath(contentRoot);
+            TryCopyIfMissing(bundledElementsPath, LocalElementsPath);
+        }
+
+        if (!File.Exists(LocalDemoVideoPath))
+        {
+            var bundledDemoVideoPath = GetBundledDemoVideoPath(contentRoot);
+            TryCopyIfMissing(bundledDemoVideoPath, LocalDemoVideoPath);
+        }
     }
+
+    private static bool TryCopyIfMissing(string sourcePath, string destinationPath)
+    {
+        if (File.Exists(destinationPath))
+            return true;
+
+        if (!File.Exists(sourcePath))
+            return false;
+
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(destinationPath)!);
+            File.Copy(sourcePath, destinationPath, overwrite: false);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
 }

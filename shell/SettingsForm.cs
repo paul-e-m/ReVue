@@ -5,10 +5,11 @@ using System.Drawing;
 using System.Text.Json;
 using System.Windows.Forms;
 
-namespace ElementReview.Shell;
+namespace ReVueVRO.Shell;
 
 public sealed class SettingsForm : Form
 {
+    private const string AppTitle = "ReVue VRO";
     private readonly WebView2 _webView;
     private readonly string _operatorAuthToken;
     private string _pendingUrl;
@@ -18,7 +19,7 @@ public sealed class SettingsForm : Form
         _pendingUrl = url;
         _operatorAuthToken = operatorAuthToken;
 
-        Text = "Element Review Settings";
+        Text = "ReVue VRO Settings";
         Icon = AppWindowIcon.Extract() ?? Icon;
         StartPosition = FormStartPosition.CenterParent;
         MinimumSize = new Size(900, 650);
@@ -60,7 +61,7 @@ public sealed class SettingsForm : Form
             MessageBox.Show(
                 this,
                 "WebView2 could not be initialized.\r\n\r\n" + ex.Message,
-                "Element Review",
+                AppTitle,
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
         }
@@ -73,6 +74,11 @@ public sealed class SettingsForm : Form
         return "(() => {\n" +
             "  const host = window.location.hostname;\n" +
             "  if (host !== \"127.0.0.1\" && host !== \"localhost\" && host !== \"::1\") return;\n" +
+            "  Object.defineProperty(window, \"__REVUE_OPERATOR_TOKEN\", {\n" +
+            "    value: " + tokenJson + ",\n" +
+            "    writable: false,\n" +
+            "    configurable: false\n" +
+            "  });\n" +
             "  Object.defineProperty(window, \"__ELEMENT_REVIEW_OPERATOR_TOKEN\", {\n" +
             "    value: " + tokenJson + ",\n" +
             "    writable: false,\n" +

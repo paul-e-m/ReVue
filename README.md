@@ -1,6 +1,6 @@
-# ElementReview
+# ReVue VRO
 
-ElementReview is a Windows desktop recording and replay tool for figure skating competitions. It combines:
+ReVue VRO is a Windows desktop recording and replay tool for figure skating competitions. It combines:
 
 - a local ASP.NET Core server
 - a Windows Forms shell
@@ -8,11 +8,11 @@ ElementReview is a Windows desktop recording and replay tool for figure skating 
 - `ffmpeg` / `ffprobe` for recording
 - MediaMTX for live RTSP relay into the browser UI
 
-The current app version is `v0.6.2`.
+The current app version is `v1.0.0`.
 
 ## What It Does
 
-ElementReview is built around a fast record-to-review workflow:
+ReVue VRO is built around a fast record-to-review workflow:
 
 1. show a live RTSP feed or demo video
 2. start recording
@@ -29,31 +29,31 @@ Current operator features include:
 - replay playback, scrubbing, looping, zoom, and frame stepping
 - replay clip editing
 - English/French UI switching from the main control bar
-- a separate Judge Video Replay app for remote judge/referee review
-- demand-driven Judge Video Replay client caching
+- a separate ReVue Judge app for remote judge/referee review
+- demand-driven ReVue Judge client caching
 - saved-video export into a metadata-based folder structure
 - recording shortcuts: `R` starts/stops recording, `Space` starts/stops clips, and `S` sets/resets the program start when halfway timing is active
 
-## Judge Video Replay
+## ReVue Judge
 
-`JudgeVideoReplay.exe` is the remote replay client for judges and the referee. It packages its own static UI under `JudgeVideoReplay/wwwroot` and connects to the ElementReview backend API over the LAN.
+`ReVue-Judge.exe` is the remote replay client for judges and the referee. It packages its own static UI under `ReVue-Judge/wwwroot` and connects to the ReVue VRO backend API over the LAN.
 
 The same executable can be used by both judges and the referee. Referee timing functionality is available when the app settings role is `Referee`; the `Judge` role hides those timing controls.
 
-Run `JudgeVideoReplay.exe` on each judge or referee computer. In the app settings, set the Server IP address to the computer running ElementReview (i.e., the VRO computer).
+Run `ReVue-Judge.exe` on each judge or referee computer. In the app settings, set the Server IP address to the computer running ReVue VRO (i.e., the VRO computer).
 
-- Judge Video Replay starts in a rail/menu view. Element buttons loop their clipped region until playback is paused or another view is selected.
-- Element buttons are clickable immediately. When a judge clicks a clip, the Judge Video Replay client downloads and caches only the needed video chunks.
+- ReVue Judge starts in a rail/menu view. Element buttons loop their clipped region until playback is paused or another view is selected.
+- Element buttons are clickable immediately. When a judge clicks a clip, the ReVue Judge client downloads and caches only the needed video chunks.
 - The video icon button beneath the element rail appears only when replay media is available and opens the full-video timeline with clip markers for reviewing portions of the performance outside the clipped elements.
 - Cached chunks are reused, so repeated playback of the same region does not download the same bytes again.
-- Judge Video Replay shows a session info bar when replay clips are available.
-- The Judge Video Replay timer overlay appears above clip blocks and remains translucent so the clip underneath is still visible.
-- Judge Video Replay is read-only. It can read session status, session metadata, and low-res replay video, but it cannot start/stop recording, mark clips, clear sessions, edit replay clips, change settings, or restart ElementReview.
+- ReVue Judge shows a session info bar when replay clips are available.
+- The ReVue Judge timer overlay appears above clip blocks and remains translucent so the clip underneath is still visible.
+- ReVue Judge is read-only. It can read session status, session metadata, and low-res replay video, but it cannot start/stop recording, mark clips, clear sessions, edit replay clips, change settings, or restart ReVue VRO.
 
-Judge Video Replay client transfer behaviour is coordinated by the ElementReview backend:
+ReVue Judge client transfer behaviour is coordinated by the ReVue VRO backend:
 
-- Element Review operator high-res replay requests never enter the Judge Video Replay transfer path.
-- Judge Video Replay low-res on-demand chunk requests enter the Judge Video Replay transfer path.
+- ReVue VRO operator high-res replay requests never enter the ReVue Judge transfer path.
+- ReVue Judge low-res on-demand chunk requests enter the ReVue Judge transfer path.
 
 ## Saved Video Export
 
@@ -76,13 +76,14 @@ Folder and file names are built from `SessionInfo.json`.
 - [shell/Program.cs] starts the local web server and native shell.
 - [shell/MainForm.cs] hosts the main operator UI in WebView2.
 - [AppServer.cs] serves static files and the local HTTP API.
-- [JudgeVideoReplay/JudgeVideoReplay.csproj] builds the separate `JudgeVideoReplay.exe` executable.
+- [ReVueVRO.csproj] builds the `ReVue-VRO.exe` executable.
+- [ReVue-Judge/ReVue-Judge.csproj] builds the separate `ReVue-Judge.exe` executable.
 - [Services/RecorderManager.cs] manages recording, replay-file generation, and saved-video export.
 - [Services/MediaMtxManager.cs] runs MediaMTX for RTSP relay.
 - [Services/SessionManager.cs] owns in-memory session and clip state.
 - [wwwroot/index.html] is the main operator UI.
 - [wwwroot/config.html] is the settings window.
-- [JudgeVideoReplay/wwwroot/judge-video-replay.html] is the Judge Video Replay UI.
+- [ReVue-Judge/wwwroot/ReVue-Judge.html] is the ReVue Judge UI.
 
 The local server listens on:
 
@@ -97,13 +98,13 @@ http://127.0.0.1:5050
 http://localhost:5050
 ```
 
-LAN clients can reach only the Judge Video Replay read-only API surface:
+LAN clients can reach only the ReVue Judge read-only API surface:
 
 - `GET /api/status`
 - `GET /api/sessionInfo`
 - `GET /api/recording/file?kind=low-res&v=<ReplayMediaToken>`
 
-Operator-only pages and API actions are restricted to the ElementReview computer. On startup, ElementReview generates a disposable per-session operator token and the local WebView operator UI attaches it automatically to protected API calls. Installers and operators do not need to configure passwords, QR codes, or shared secrets. The token is not stored in source code and changes when the ElementReview server restarts.
+Operator-only pages and API actions are restricted to the ReVue VRO computer. On startup, ReVue VRO generates a disposable per-session operator token and the local WebView operator UI attaches it automatically to protected API calls. Installers and operators do not need to configure passwords, QR codes, or shared secrets. The token is not stored in source code and changes when the ReVue VRO server restarts.
 
 Protected operator-only actions include configuration changes, recording start/stop, clip marking, undo/redo, session clearing, replay trim/split/insert/delete, diagnostics, restart, high-res replay access, demo/live operator pages, and the main operator UI.
 
@@ -118,7 +119,7 @@ To compile the app, you need:
 - `tools/ffprobe.exe`
 - `tools/mediamtx.exe`
 
-Optional CSS helper executables should be placed beside `ElementReview.exe`:
+Optional CSS helper executables should be placed beside `ReVue-VRO.exe`:
 
 - `GetSessionInfo_LegacyCSS.exe` pulls session information from legacy CSS into SessionInfo.json
 - `GetSessionInfo_OnlineCSS.exe` pulls session information from Online CSS into SessionInfo.json
@@ -126,26 +127,44 @@ Optional CSS helper executables should be placed beside `ElementReview.exe`:
 
 ## Data Files
 
-Writable per-user files live under:
+Shared per-user files live under:
 
 ```text
-%LocalAppData%\ElementReview\data\
+%LocalAppData%\ReVue\data\
+```
+
+Shared replay media live under:
+
+```text
+%LocalAppData%\ReVue\media\
+```
+
+App-specific settings live under:
+
+```text
+%LocalAppData%\ReVue\ReVue-VRO\
+%LocalAppData%\ReVue\ReVue-Judge\
 ```
 
 Important files:
 
-- `appconfig.json`
 - `SessionInfo.json`
 - `demovideo.mp4`
 - `current-high-res.mp4`
+- `current-high-res-recording.mp4`
 - `current-low-res.mp4`
+- `current-low-res-recording.mp4`
+- `ReVue-VRO\appconfig.json`
+- `ReVue-VRO\remote-replay.json`
+- `ReVue-VRO\mediamtx.yml`
+- `ReVue-Judge\appconfig.json`
 
 Bundled files under `data\` are used as fallbacks for development and packaging when the local copies do not exist.
 
-During recording, ElementReview produces two replay MP4 files in parallel:
+During recording, ReVue VRO produces two replay MP4 files in parallel under `%LocalAppData%\ReVue\media\`:
 
 - `current-high-res.mp4`: the main operator replay file, encoded with `highresVideoGop` for responsive seeking in `index.html`.
-- `current-low-res.mp4`: the Judge Video Replay and saved-video file, encoded as 720p/30 fps with the configured `lowresVideoGop` and `lowresVideoBitrate` values. When `SaveVideos` is enabled, AAC audio from the source is included for saved copies; Judge Video Replay clients keep playback muted.
+- `current-low-res.mp4`: the ReVue Judge and saved-video file, encoded as 720p/30 fps with the configured `lowresVideoGop` and `lowresVideoBitrate` values. When `SaveVideos` is enabled, AAC audio from the source is included for saved copies; ReVue Judge clients keep playback muted.
 
 When `UseHardwareEncodingWhenAvailable` is enabled and a supported encoder is available, both replay files use hardware encoding. Otherwise both files use software encoding.
 
@@ -178,9 +197,9 @@ Notes:
 - `UiZoomPercent` is shared by the shell and settings window.
 - `Language` is switched live in the main operator UI.
 - `AutoplaySelectedClip` controls whether selecting a replay element immediately starts playback and defaults to `false`.
-- `highresVideoGop` controls the high-res/operator replay video GOP and defaults to `10`.
-- `lowresVideoGop` controls the low-res Judge Video Replay client/saved-video GOP and defaults to `60`.
-- `lowresVideoBitrate` is stored in kbps and defaults to `2500`.
+- `highresVideoGop` controls the high-res/operator replay video GOP and defaults to `2`.
+- `lowresVideoGop` controls the low-res ReVue Judge client/saved-video GOP and defaults to `60`.
+- `lowresVideoBitrate` is stored in kbps and defaults to `3500`.
 
 ## SessionInfo Shape
 
@@ -261,6 +280,14 @@ Published output is created under:
 ```text
 bin\Release\net10.0-windows\win-x64\publish\
 ```
+
+To sign the published app binaries and the VRO installer in `dist\`, run:
+
+```powershell
+.\sign-artifacts.ps1
+```
+
+That script signs and verifies `ReVue-VRO.exe`, `ReVue-Judge.exe`, and `dist\ReVue-VRO-Setup-<version>.exe` when the installer is present.
 
 ## Repository Layout
 

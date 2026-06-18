@@ -3,9 +3,9 @@ import { TimelineRenderer } from "./app-timeline.js";
 import { ReplayController } from "./app-replay.js";
 import { ShortcutKeysController } from "./app-shortcut-keys.js";
 
-// ElementReviewApp coordinates the shared operator UI state in index.html.
+// ReVueVROApp coordinates the shared operator UI state in index.html.
 // Backend session data stays authoritative, while ReplayController manages replay-local interactions.
-const LS_EDIT_KEY = "ElementReview_EditMode";
+const LS_EDIT_KEY = "ReVue_EditMode";
 const MANUAL_HALF_TIMING_PRESETS = {
     None: { seconds: null, labelKey: "hwtNone" },
     SeniorSP: { seconds: 80, labelKey: "hwtSeniorSp" },
@@ -14,7 +14,7 @@ const MANUAL_HALF_TIMING_PRESETS = {
     JuniorFS: { seconds: 105, labelKey: "hwtJuniorFs" },
 };
 
-export class ElementReviewApp {
+export class ReVueVROApp {
     constructor() {
         // Cache DOM references once up front so the rest of the code can focus on state transitions.
         this.refs = {
@@ -3005,7 +3005,7 @@ export class ElementReviewApp {
 }
 
 if (typeof window !== "undefined" && typeof document !== "undefined") {
-    const app = new ElementReviewApp();
+    const app = new ReVueVROApp();
     window.elementReviewApp = app;
     app.init().catch((err) => alert(err.message || err));
 }

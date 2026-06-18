@@ -2,9 +2,9 @@ using Microsoft.AspNetCore.Hosting;
 using System.Diagnostics;
 using System.Globalization;
 using System.Text.Json;
-using ElementReview.Models;
+using ReVueVRO.Models;
 
-namespace ElementReview.Services;
+namespace ReVueVRO.Services;
 
 // Runs the ffmpeg recording pipeline, prepares replay assets, and optionally
 // exports completed recordings into the configured saved-video folder tree.
@@ -20,8 +20,6 @@ public class RecorderManager
 
     private readonly string _contentRoot;
     private readonly string _toolsDir;
-    private readonly string _dataDir;
-
     private readonly string _highResFile;
     private readonly string _highResTempFile;
     private readonly string _lowResFile;
@@ -41,8 +39,7 @@ public class RecorderManager
     {
         _contentRoot = env.ContentRootPath;
         _toolsDir = Path.Combine(_contentRoot, "tools");
-        _dataDir = AppPaths.LocalDataDir;
-        Directory.CreateDirectory(_dataDir);
+        Directory.CreateDirectory(AppPaths.LocalMediaDir);
 
         _highResFile = AppPaths.LocalHighResVideoPath;
         _highResTempFile = AppPaths.LocalHighResTempVideoPath;
@@ -52,7 +49,6 @@ public class RecorderManager
         _session = session;
     }
 
-    // Legacy property names retained for existing callers inside the app.
     public string OutputFilePath => _highResFile;
     public string TempFilePath => _highResTempFile;
 

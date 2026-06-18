@@ -1,12 +1,12 @@
-# ElementReview API Manual
+# ReVue VRO API Manual
 
 ## Overview
 
-ElementReview exposes a local HTTP API used by:
+ReVue VRO exposes a local HTTP API used by:
 
-- the main operator (VRO) UI in `index.html`, used by the Element Review app
-- the settings window in `config.html`, used by the Element Review app
-- the separate standalone Judge Video Replay app in `JudgeVideoReplay/wwwroot/judge-video-replay.html`
+- the main operator (VRO) UI in `index.html`, used by the ReVue VRO app
+- the settings window in `config.html`, used by the ReVue VRO app
+- the separate standalone ReVue Judge app in `ReVue-Judge/wwwroot/ReVue-Judge.html`
 
 Base URL:
 
@@ -14,20 +14,20 @@ Base URL:
 http://localhost:5050
 ```
 
-Judge Video Replay clients use the ElementReview computer's LAN address, for example:
+ReVue Judge clients use the ReVue VRO computer's LAN address, for example:
 
 ```text
 http://192.168.6.60:5050
 ```
 
-ElementReview listens on port `5050`, but access is split by purpose:
+ReVue VRO listens on port `5050`, but access is split by purpose:
 
-- Judge Video Replay clients on the LAN can use only read-only replay endpoints.
+- ReVue Judge clients on the LAN can use only read-only replay endpoints.
 - Operator-only pages and API actions are restricted to loopback (`127.0.0.1` / `localhost`) and require a disposable per-session bearer token.
 
-The operator token is generated in memory when ElementReview starts. The native ElementReview shell injects it directly into the local WebView before the operator pages load; installers and operators do not configure passwords, QR codes, or shared secrets. The token is not exposed by any API endpoint.
+The operator token is generated in memory when ReVue VRO starts. The native ReVue VRO shell injects it directly into the local WebView before the operator pages load; installers and operators do not configure passwords, QR codes, or shared secrets. The token is not exposed by any API endpoint.
 
-External clients should not attempt to automate operator-only endpoints. They are intended for the local ElementReview UI only.
+External clients should not attempt to automate operator-only endpoints. They are intended for the local ReVue VRO UI only.
 
 ## Response Conventions
 
@@ -40,14 +40,14 @@ Common status codes:
 - `200 OK`
 - `400 Bad Request`
 - `401 Unauthorized`: loopback operator request is missing the session bearer token
-- `403 Forbidden`: endpoint is restricted to the ElementReview computer
+- `403 Forbidden`: endpoint is restricted to the ReVue VRO computer
 - `404 Not Found`
 
 ## Access Model
 
 ### LAN Read-Only Endpoints
 
-The following endpoints are available to Judge Video Replay clients over the LAN:
+The following endpoints are available to ReVue Judge clients over the LAN:
 
 | Method | Path | Purpose |
 | - | - | - |
@@ -59,13 +59,13 @@ These endpoints do not allow recording control, clip marking, replay editing, co
 
 ### Operator-Only Endpoints
 
-All other app pages and API endpoints are local-only. They must be called from the ElementReview computer. API endpoints also require:
+All other app pages and API endpoints are local-only. They must be called from the ReVue VRO computer. API endpoints also require:
 
 ```http
 Authorization: Bearer <operator-session-token>
 ```
 
-The local operator UI receives the token from the native WebView shell at page startup. There is no API endpoint for retrieving the token, and the token changes every time the ElementReview server restarts.
+The local operator UI receives the token from the native WebView shell at page startup. There is no API endpoint for retrieving the token, and the token changes every time the ReVue VRO server restarts.
 
 ## Canonical JSON Shapes
 
@@ -145,8 +145,8 @@ Known `elements[n]` fields:
 
 | Field | Used for |
 | - | - |
-| `code` | Element label in the local ElementReview operator UI |
-| `base_code` | Element label in the Judge Video Replay client |
+| `code` | Element label in the local ReVue VRO operator UI |
+| `base_code` | Element label in the ReVue Judge client |
 | `review` | Review flag; review-marked clips are highlighted and remembered by the backend |
 
 ### Status
@@ -252,7 +252,7 @@ Returns the active demo MP4 with range support.
 
 Resolution order:
 
-1. `%LocalAppData%\ElementReview\data\demovideo.mp4`
+1. `%LocalAppData%\ReVue\media\demovideo.mp4`
 2. `data\demovideo.mp4`
 
 ## Status And Configuration
@@ -279,8 +279,8 @@ Notes:
 
 - `SaveVideos` is forced off in demo mode.
 - `SavedVideosFolder` is defaulted if blank.
-- Missing or invalid `lowresVideoBitrate` defaults to `2500` kbps.
-- Missing or invalid `highresVideoGop` defaults to `10`.
+- Missing or invalid `lowresVideoBitrate` defaults to `3500` kbps.
+- Missing or invalid `highresVideoGop` defaults to `2`.
 - Missing or invalid `lowresVideoGop` defaults to `60`.
 
 ### GET `/api/appinfo`
@@ -291,7 +291,7 @@ Returns the app version:
 
 ```json
 {
-  "version": "v0.6.2"
+  "version": "v1.0.0"
 }
 ```
 
@@ -301,7 +301,7 @@ Returns the app version:
 
 Access: LAN read-only.
 
-Returns the current `SessionInfo.json` contents unchanged. See [SessionInfo](#sessioninfo) for the known fields currently read by ElementReview and Judge Video Replay.
+Returns the current `SessionInfo.json` contents unchanged. See [SessionInfo](#sessioninfo) for the known fields currently read by ReVue VRO and ReVue Judge.
 
 If CSS link mode is `None`, or if the file is missing, the server returns:
 
@@ -415,42 +415,42 @@ Streams the current replay MP4 with range support.
 Query options:
 
 - no query string or `?kind=high-res`: high-res operator replay file, operator-only
-- `?kind=low-res`: low-res Judge Video Replay and saved-video replay file, LAN read-only when paired with a current replay token
+- `?kind=low-res`: low-res ReVue Judge and saved-video replay file, LAN read-only when paired with a current replay token
 - `v=<ReplayMediaToken>`: required for low-res replay requests
 
 Low-res requests should include the current replay media token as `v=<ReplayMediaToken>`. If the token is stale, the server returns `404 Not Found`.
 
-Operator high-res replay requests are served directly and are available only on the ElementReview computer. Judge Video Replay low-res requests are demand-driven and enter the Judge Video Replay transfer path. The backend does not preload, throttle, or cap concurrent Judge Video Replay transfers.
+Operator high-res replay requests are served directly and are available only on the ReVue VRO computer. ReVue Judge low-res requests are demand-driven and enter the ReVue Judge transfer path. The backend does not preload, throttle, or cap concurrent ReVue Judge transfers.
 
-ElementReview records both files while the recording is in progress. `current-high-res.mp4` is encoded with the configured `highresVideoGop`, which is the high-res/operator replay GOP; `current-low-res.mp4` is encoded as 720p/30 fps with the configured `lowresVideoGop` and `lowresVideoBitrate` values. When `SaveVideos` is enabled, the low-res file also includes AAC audio from the source for saved copies; Judge Video Replay clients keep playback muted. When `UseHardwareEncodingWhenAvailable` is enabled and supported hardware is available, both files use the same hardware encoder. Otherwise both use software encoding.
+ReVue VRO records both files while the recording is in progress. `current-high-res.mp4` is encoded with the configured `highresVideoGop`, which is the high-res/operator replay GOP; `current-low-res.mp4` is encoded as 720p/30 fps with the configured `lowresVideoGop` and `lowresVideoBitrate` values. When `SaveVideos` is enabled, the low-res file also includes AAC audio from the source for saved copies; ReVue Judge clients keep playback muted. When `UseHardwareEncodingWhenAvailable` is enabled and supported hardware is available, both files use the same hardware encoder. Otherwise both use software encoding.
 
-## Judge Video Replay App
+## ReVue Judge App
 
-The remote Judge Video Replay UI is packaged in the separate Judge Video Replay app under `JudgeVideoReplay/wwwroot`. It loads locally inside `JudgeVideoReplay.exe` and uses the ElementReview backend API endpoints `/api/status`, `/api/sessionInfo`, and `/api/recording/file`.
+The remote ReVue Judge UI is packaged in the separate ReVue Judge app under `ReVue-Judge/wwwroot`. It loads locally inside `ReVue-Judge.exe` and uses the ReVue VRO backend API endpoints `/api/status`, `/api/sessionInfo`, and `/api/recording/file`.
 
-Run `JudgeVideoReplay.exe` on each judge or referee computer. In the app settings, set the Server IP address to the computer running ElementReview.
+Run `ReVue-Judge.exe` on each judge or referee computer. In the app settings, set the Server IP address to the computer running ReVue VRO.
 
-Judge Video Replay is read-only over the LAN. It cannot call operator-only recording, clip marking, replay editing, settings, diagnostics, or restart endpoints.
+ReVue Judge is read-only over the LAN. It cannot call operator-only recording, clip marking, replay editing, settings, diagnostics, or restart endpoints.
 
 Query options:
 
 - `autoplay=false` or `a=false`: disable initial autoplay.
 - `loop=false` or `l=false`: disable looping the selected clip.
-- `timer=true` or `tm=true`: show the Judge Video Replay timer control.
+- `timer=true` or `tm=true`: show the ReVue Judge timer control.
 
-Judge Video Replay behavior:
+ReVue Judge behavior:
 
 - element rail buttons 1-15 represent clipped element regions
 - element rail buttons are clickable immediately
 - clicking an element clip autoplays that clipped region on a loop
 - the video icon button beneath the element rail appears when replay media is available and opens the full-video timeline with blue numbered clip markers
-- Judge Video Replay clients cache chunks on demand as playback or seeking requests them
+- ReVue Judge clients cache chunks on demand as playback or seeking requests them
 - cached chunks are reused, so repeated playback of the same region does not download the same bytes again
-- full Judge Video Replay mode shows a session info bar when replay clips are available
+- full ReVue Judge mode shows a session info bar when replay clips are available
 - the session info bar includes the category, discipline, flight, segment, competitor name, and a refresh button
-- the Judge Video Replay timer range is drawn above element clip blocks and remains translucent
+- the ReVue Judge timer range is drawn above element clip blocks and remains translucent
 
-`judge.html` has been removed; use the Judge Video Replay app for remote replay.
+`judge.html` has been removed; use the ReVue Judge app for remote replay.
 
 ## Replay Editing
 

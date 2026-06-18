@@ -1,7 +1,7 @@
 using System.Drawing;
 using System.Windows.Forms;
 
-namespace ElementReview.Shell;
+namespace ReVueVRO.Shell;
 
 internal static class AppWindowIcon
 {

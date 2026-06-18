@@ -1,9 +1,9 @@
 using Microsoft.AspNetCore.Builder;
-using ElementReview.Hosting;
-using ElementReview.Shell;
+using ReVueVRO.Hosting;
+using ReVueVRO.Shell;
 using System.Windows.Forms;
 
-namespace ElementReview;
+namespace ReVueVRO;
 
 internal static class Program
 {
@@ -22,8 +22,8 @@ internal static class Program
         catch (Exception ex)
         {
             MessageBox.Show(
-                "Element Review could not start the local web server.\r\n\r\n" + ex.Message,
-                "Element Review",
+                "ReVue VRO could not start the local web server.\r\n\r\n" + ex.Message,
+                "ReVue VRO",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
             return;

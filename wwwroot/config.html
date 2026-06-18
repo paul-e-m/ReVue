@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Element Review Settings</title>
+    <title>ReVue VRO Settings</title>
 
     <style>
         :root {
@@ -543,17 +543,17 @@
                         <div class="row">
                             <div class="labelBlock">
                                 <label for="CSSLink" data-i18n="cssLinkType">CSS Link Type</label>
-                                <div class="help" data-i18n="cssLinkTypeHelp">Choose how Element Review links to CSS data.</div>
+                                <div class="help" data-i18n="cssLinkTypeHelp">Choose how ReVue VRO links to CSS data.</div>
                             </div>
 
                             <select id="CSSLink" name="CSSLink" class="fieldSelect fieldWidthSmall">
+                                <option value="None" data-i18n="cssLinkNone">None</option>
                                 <option value="Legacy" data-i18n="cssLinkLegacy">Legacy</option>
                                 <!-- Temporarily hidden until remote helper app support is available.
                                 <option value="Online CSS" data-i18n="cssLinkOnline">Online CSS</option>
                                 <option value="Offline CSS" data-i18n="cssLinkOffline">Offline CSS</option>
                                 -->
                                 <option value="Custom" data-i18n="cssLinkCustom">Custom</option>
-                                <option value="None" data-i18n="cssLinkNone">None</option>
                             </select>
                         </div>
 
@@ -668,7 +668,7 @@
                         <div class="row">
                             <div class="labelBlock">
                                 <label for="highresVideoGop" data-i18n="highresVideoGop">High-res Video GOP</label>
-                                <div class="help" data-i18n="highresVideoGopHelp">Keyframe interval for the Element Review operator high-res replay video.</div>
+                                <div class="help" data-i18n="highresVideoGopHelp">Keyframe interval for the ReVue VRO operator high-res replay video.</div>
                             </div>
 
                             <input id="highresVideoGop" name="highresVideoGop" class="fieldWidthSmall" type="number" min="1" step="1" />
@@ -833,9 +833,9 @@
         let rtspPingInFlight = false;
 
         function loadOperatorAuthToken() {
-            operatorAuthToken = String(window.__ELEMENT_REVIEW_OPERATOR_TOKEN || "");
+            operatorAuthToken = String(window.__REVUE_OPERATOR_TOKEN || window.__ELEMENT_REVIEW_OPERATOR_TOKEN || "");
             if (!operatorAuthToken) {
-                throw new Error("Element Review operator token was not injected by the native shell.");
+                throw new Error("ReVue VRO operator token was not injected by the native shell.");
             }
         }
 
@@ -1016,7 +1016,10 @@
             });
 
             if (matchingIndex < 0) {
-                matchingIndex = 0;
+                matchingIndex = Array.from(cssLinkInput.options).findIndex(option => option.value === "None");
+                if (matchingIndex < 0) {
+                    matchingIndex = 0;
+                }
             }
 
             cssLinkInput.selectedIndex = matchingIndex;

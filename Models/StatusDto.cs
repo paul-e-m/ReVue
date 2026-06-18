@@ -1,6 +1,6 @@
-using ElementReview.Models;
+using ReVueVRO.Models;
 
-namespace ElementReview.Models;
+namespace ReVueVRO.Models;
 
 public class StatusDto
 {

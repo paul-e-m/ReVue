@@ -32,13 +32,13 @@ export function isTypingTarget(target) {
 }
 
 export function getOperatorAuthToken() {
-  return String(window.__ELEMENT_REVIEW_OPERATOR_TOKEN || "");
+  return String(window.__REVUE_OPERATOR_TOKEN || window.__ELEMENT_REVIEW_OPERATOR_TOKEN || "");
 }
 
 function authHeaders(extraHeaders = {}) {
   const token = getOperatorAuthToken();
   if (!token) {
-    throw new Error("Element Review operator token was not injected by the native shell.");
+    throw new Error("ReVue VRO operator token was not injected by the native shell.");
   }
 
   return { ...extraHeaders, Authorization: `Bearer ${token}` };

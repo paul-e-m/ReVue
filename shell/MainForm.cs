@@ -1,8 +1,8 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
-using ElementReview.Hosting;
-using ElementReview.Models;
+using ReVueVRO.Hosting;
+using ReVueVRO.Models;
 using System.Diagnostics;
 using System.Drawing;
 using System.Globalization;
@@ -10,10 +10,11 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Windows.Forms;
 
-namespace ElementReview.Shell;
+namespace ReVueVRO.Shell;
 
 public sealed class MainForm : Form
 {
+    private const string AppTitle = "ReVue VRO";
     private readonly IHost _app;
     private readonly WebView2 _webView;
 
@@ -26,7 +27,7 @@ public sealed class MainForm : Form
     private const int MinUiZoomPercent = 50;
     private const int MaxUiZoomPercent = 150;
 
-    private static readonly string AppConfigPath = AppPaths.LocalConfigPath;
+    private static readonly string AppConfigPath = AppPaths.LocalVroConfigPath;
     private static readonly JsonSerializerOptions AppConfigJsonOptions = new()
     {
         PropertyNameCaseInsensitive = true,
@@ -37,7 +38,7 @@ public sealed class MainForm : Form
     {
         _app = app;
 
-        Text = "Element Review";
+        Text = AppTitle;
         Icon = AppWindowIcon.Extract() ?? Icon;
         StartPosition = FormStartPosition.CenterScreen;
         MinimumSize = new Size(1100, 750);
@@ -115,7 +116,7 @@ public sealed class MainForm : Form
             MessageBox.Show(
                 this,
                 "WebView2 could not be initialized.\r\n\r\n" + ex.Message,
-                "Element Review",
+                AppTitle,
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
         }
@@ -162,6 +163,11 @@ public sealed class MainForm : Form
         return "(() => {\n" +
             "  const host = window.location.hostname;\n" +
             "  if (host !== \"127.0.0.1\" && host !== \"localhost\" && host !== \"::1\") return;\n" +
+            "  Object.defineProperty(window, \"__REVUE_OPERATOR_TOKEN\", {\n" +
+            "    value: " + tokenJson + ",\n" +
+            "    writable: false,\n" +
+            "    configurable: false\n" +
+            "  });\n" +
             "  Object.defineProperty(window, \"__ELEMENT_REVIEW_OPERATOR_TOKEN\", {\n" +
             "    value: " + tokenJson + ",\n" +
             "    writable: false,\n" +
@@ -222,8 +228,8 @@ public sealed class MainForm : Form
             _restarting = false;
             MessageBox.Show(
                 this,
-                "Element Review could not restart itself.\r\n\r\n" + ex.Message,
-                "Element Review",
+                "ReVue VRO could not restart itself.\r\n\r\n" + ex.Message,
+                AppTitle,
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
             return;

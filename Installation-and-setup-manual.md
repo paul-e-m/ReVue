@@ -1,22 +1,28 @@
-# ElementReview and JudgeVideoReplay Installation and Setup Instructions
+# ReVue VRO and ReVue Judge Installation and Setup Manual
 
 This manual covers a normal event setup with one VRO computer and separate judge/referee computers.
 
 ## Which App Goes Where
 
-Install `ElementReview` only on the VRO computer.
+Install `ReVue VRO` only on the VRO computer.
 
-The VRO computer records the incoming video, creates the replay files, runs the local ElementReview interface for the technical panel, and serves replay clips to the judging panel.
+The VRO computer records the incoming video, creates the replay files, runs the local ReVue VRO UI for the VRO, and serves replay clips to the judging panel.
 
-Install `JudgeVideoReplay` on every judge and referee computer.
+Install `ReVue Judge` on every judge and referee computer.
 
-JudgeVideoReplay is the panel replay client. 
+ReVue Judge is the panel replay client. It does not record video and does not replace ReVue VRO on the VRO computer.
+
+## Before Installing
+
+Confirm that all computers are on the same event network and that the VRO computer has a stable (not dynamic) IP address. The judge and referee computers will use that VRO IP address to connect to ReVue VRO.
+
+On Windows 10 computers, ReVue VRO and ReVue Judge require the Microsoft Edge WebView2 Runtime. If either app opens to a blank window or fails immediately on a Windows 10 computer, install the [Microsoft Edge WebView2 Evergreen Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/#download-section) and start the app again. Do not install WebView2 separately on Windows 11 as this runtime is already included in Windows 11.
 
 ## Recommended Computer Requirements
 
-ElementReview does the heavier work. It records the incoming stream, creates high-res and low-res replay video files, serves replay files to the panel, and writes/deletes a large amount of video data during an event.
+ReVue VRO does the heavier work. It records the incoming stream, creates high-res and low-res replay video, serves replay files to the panel, and writes/deletes a large amount of video data during an event.
 
-Minimum recommended VRO computer for ElementReview:
+Minimum recommended VRO computer for ReVue VRO:
 
 | Component | Minimum recommendation | Preferred event setup |
 | --- | --- | --- |
@@ -26,9 +32,9 @@ Minimum recommended VRO computer for ElementReview:
 | Storage | SSD, `1 TB` minimum |  |
 | Network | Wired Gigabit Ethernet is recommended |  |
 
-Do not use a mechanical hard drive for the VRO computer. Avoid small capacity, or bargain no-name drives for the VRO computer. ElementReview writes and deletes video data continuously, so an SSD gives better recording/replay performance. Ensure a minimum 15-20% drive capacity is available at all times.
+Do not use a mechanical hard drive for the VRO computer. Avoid small capacity, or bargain no name drives for the VRO computer. ReVue VRO writes and deletes video data continuously, so an SSD gives better recording/replay performance. A `1 TB` or larger SSD is recommended because smaller drives can fill quickly and may wear faster when used repeatedly for video recording workloads. Ensure a minimum 15-20% drive capacity is available at all times.
 
-For JudgeVideoReplay computers, the requirements are lighter because they receive and play back low-res replay video rather than recording and encoding the main feed.
+For ReVue Judge computers, the requirements are lighter because they receive and play back low-res replay video rather than recording and encoding the main feed.
 
 Minimum recommended judge/referee computer:
 
@@ -56,7 +62,7 @@ Windows may warn about newly downloaded or newly provided installers, especially
 If Windows SmartScreen blocks the installer:
 
 1. Click `More info`.
-2. Confirm the publisher/file is the expected ElementReview or JudgeVideoReplay installer.
+2. Confirm the publisher/file is the expected ReVue VRO or ReVue Judge installer.
 3. Click `Run anyway`.
 
 If Windows Defender or the browser marks the file as suspicious:
@@ -71,22 +77,22 @@ Do not bypass these warnings for files from an unknown source.
 
 Confirm that all computers are on the same event network and that the VRO computer has a stable (not dynamic) IP address.
 
-On some Windows 10 computers, ElementReview and JudgeVideoReplay require the Microsoft Edge WebView2 Runtime. If either app opens to a blank window or fails immediately on a Windows 10 computer, install the [Microsoft Edge WebView2 Evergreen Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/#download-section) and start the app again. 
+On some Windows 10 computers, ReVue VRO and ReVue Judge require the Microsoft Edge WebView2 Runtime. If either app opens to a blank window or fails immediately on a Windows 10 computer, install the [Microsoft Edge WebView2 Evergreen Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/#download-section) and start the app again.
 
 Do not install WebView2 separately on Windows 11 as this runtime is already included in Windows 11.
 
-## Install ElementReview on the VRO Computer
+## Install ReVue VRO on the VRO Computer
 
-1. Run the `ElementReview-Setup-<version>.exe` installer on the VRO computer.
-2. Start `ElementReview`.
+1. Run the `ReVue-VRO-Setup-<version>.exe` installer on the VRO computer.
+2. Start `ReVue VRO`.
 3. Open the settings screen by clicking the gear icon located at the top right of the window.
 4. Configure the CSS link, video source, encoding, and saved-video settings.
-5. Save settings and restart ElementReview.
+5. Save settings and restart ReVue VRO.
 
-## Install JudgeVideoReplay on Judge and Referee Computers
+## Install ReVue Judge on Judge and Referee Computers
 
-1. Run the `JudgeVideoReplay-Setup-<version>.exe` installer on every judge and referee computer.
-2. Start `JudgeVideoReplay`.
+1. Run the `ReVue-Judge-Setup-<version>.exe` installer on every judge and referee computer.
+2. Start `ReVue Judge`.
 3. Open the settings screen by clicking the gear icon located at the top right of the window.
 4. Set `Server IP address` to the IP address of the VRO computer.
 5. Set the role to `Judge` or `Referee`.
@@ -100,13 +106,13 @@ Example:
 192.168.6.60
 ```
 
-## ElementReview Initial Configuration
+## ReVue VRO Initial Configuration
 
-Open ElementReview settings on the VRO computer by clicking the gear icon located at the top right of the window.
+Open ReVue VRO settings on the VRO computer by clicking the gear icon located at the top right of the window.
 
 ### CSS Integration
 
-If integrating ElementReview with Legacy CSS, set `CSS Link Type` to:
+If integrating ReVue VRO with Legacy CSS, set `CSS Link Type` to:
 
 ```text
 Legacy CSS
@@ -114,17 +120,19 @@ Legacy CSS
 
 Then, set `MSSQL Database Host` to the IP address of the CSS database host (normally the EC computer).
 
-If integrating ElementReview with Online CSS or Offline CSS, set `CSS Link Type` to:
+If integrating ReVue VRO with Online CSS or Offline CSS, set `CSS Link Type` to:
 
 ```text
 None
 ```
 
-The display of executed element codes and automatic determination of specific halfway time values is currently only supported for Legacy CSS. Similar support for Online CSS and Offline CSS is forthcoming. Use the manual `HW:` dropdown in the recording/replay UI to manually select the appropriate halfway time value when halfway timing is needed.
+The display of executed element codes and automatic determination of discipline/category/segment-specific halfway time values is currently only supported for Legacy CSS. Similar support for Online CSS and Offline CSS is forthcoming.
+
+When CSS integration is set to `None`, ReVue VRO cannot automatically detect category, discipline, segment, or halfway timing from CSS data. Use the manual `HW:` dropdown in the recording/replay UI to manually select the appropriate halfway time value when halfway timing is needed.
 
 ### Video Source
 
-Turn on Demo Mode for training or demonstration purposes. This mode uses a locally stored video instead of an RTSP video stream as the input source. The local video can be customized by replacing the file `demovideo.mp4` located in `User\AppData\Local\ElementReview\data`. 
+Turn on Demo Mode for training or demonstration purposes. This mode uses a locally stored video instead of an RTSP video stream as an input source. The local video can be customized by replacing the file `demovideo.mp4` located in `%LocalAppData%\ReVue\media\`.
 
 Supported video format:
 
@@ -163,11 +171,11 @@ Recommended settings:
 
 | Setting | Recommended value | Notes |
 | --- | --- | --- |
-| High-res Video GOP | `2` | Used by ElementReview on the VRO computer. Lower GOP helps responsive seeking. |
-| Low-res Video GOP | `30` | Used by JudgeVideoReplay clients. |
-| Low-res Video Bitrate | `2500` to `4000` kbps | Higher values improve quality but use more network bandwidth. |
+| High-res Video GOP | `2` | Used by ReVue VRO on the VRO computer. Lower GOP helps responsive seeking. |
+| Low-res Video GOP | `30` | Used by ReVue Judge clients. |
+| Low-res Video Bitrate | `3500` to `4000` kbps | Higher values improve quality but use more network bandwidth. |
 
-Note that the High-res Video GOP should be set to `10` or lower when the video input source frame rate is 60 fps. This value should be set to `5` or lower when the input video souce is 30 fps.
+Use `3500` kbps when bandwidth is limited or many clients are connected. Use `4000` kbps when the event network is strong and better judge replay quality is desired.
 
 Use `2500` kbps when bandwidth is limited or many clients are connected. Use `4000` kbps or higher when the event network is strong and better judge replay quality is desired.
 
@@ -175,7 +183,7 @@ Enable `Use Hardware Encoding` in most situations. Disable it only if hardware e
 
 ## Firewall and Network Requirements
 
-The VRO computer must allow judge and referee computers to connect to ElementReview.
+The VRO computer must allow judge and referee computers to connect to ReVue VRO.
 
 Required inbound rule on the VRO computer:
 
@@ -183,19 +191,19 @@ Required inbound rule on the VRO computer:
 TCP 5050
 ```
 
-ElementReview listens on:
+ReVue VRO listens on:
 
 ```text
 http://0.0.0.0:5050
 ```
 
-JudgeVideoReplay uses TCP port `5050` for status, replay data, and video file downloads from the VRO computer.
+ReVue Judge uses TCP port `5050` for status, replay data, and video file downloads from the VRO computer.
 
-If Windows Firewall prompts when ElementReview first runs, allow access on the event/private network.
+If Windows Firewall prompts when ReVue VRO first runs, allow access on the event/private network.
 
 If connections still fail, options include:
 
-- Add an inbound Windows Firewall rule allowing TCP `5050` for `ElementReview.exe`.
+- Add an inbound Windows Firewall rule allowing TCP `5050` for `ReVue-VRO.exe`.
 - Add an inbound Windows Firewall rule allowing TCP `5050` for the network profile.
 - Temporarily turn off Windows Firewall on the VRO computer for the event network.
 
@@ -205,31 +213,31 @@ Turning off Windows Firewall is simple for troubleshooting, but a targeted TCP `
 
 On the VRO computer:
 
-1. Start ElementReview.
+1. Start ReVue VRO.
 2. Confirm the VRO computer is connected to the event network.
 3. Confirm the VRO IP address.
 4. Confirm TCP port `5050` is allowed through the firewall.
 
 On each judge/referee computer:
 
-1. Start JudgeVideoReplay.
+1. Start ReVue Judge.
 2. Open the settings screen by clicking the gear icon located at the top right of the window.
 3. Enter the VRO computer IP address.
 4. Select the correct role (Judge or Referee)
 5. Save settings.
-6. Confirm JudgeVideoReplay connects when ElementReview is running.
+6. Confirm ReVue Judge connects when ReVue VRO is running.
 
 ## Troubleshooting
 
-If JudgeVideoReplay stays on the waiting screen:
+If ReVue Judge stays on the waiting screen:
 
-- Confirm ElementReview is running on the VRO computer.
-- Confirm the VRO IP address in JudgeVideoReplay is correct.
+- Confirm ReVue VRO is running on the VRO computer.
+- Confirm the VRO IP address in ReVue Judge is correct.
 - Confirm all computers are on the same LAN/VLAN.
 - Confirm the event network does not block client-to-client traffic.
 - Confirm TCP port `5050` is open inbound on the VRO computer.
 
-If ElementReview does not show video:
+If ReVue VRO does not show video:
 
 - Confirm Demo Mode is off for live event recording.
 - Confirm the RTSP URL is correct.
@@ -240,6 +248,6 @@ If ElementReview does not show video:
 If judge replay video is low quality or stutters:
 
 - Increase low-res bitrate toward `4000` kbps (or possibly even higher) for better quality if bandwidth allows.
-- Reduce low-res bitrate toward `2500` kbps (or possibly even lower) if the network is congested.
+- Reduce low-res bitrate toward `3500` kbps (or possibly even lower) if the network is congested.
 - Confirm all clients have strong wired or wireless network connectivity.
 - Keep low-res GOP at `30` unless directed otherwise.

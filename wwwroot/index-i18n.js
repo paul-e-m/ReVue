@@ -1,6 +1,6 @@
 window.INDEX_I18N = {
     en: {
-        pageTitle: "Element Review",
+        pageTitle: "ReVue VRO",
         elementsListAria: "Elements",
         languageSelectorAria: "Language",
         languageEnglish: "English",
@@ -16,7 +16,7 @@ window.INDEX_I18N = {
         hwtSeniorFs: "Senior FP (2:00)",
         hwtJuniorSp: "Junior SP (1:20)",
         hwtJuniorFs: "Junior FP (1:45)",
-        autoplaySelectedClipLabel: "Autoplay Clip",
+        autoplaySelectedClipLabel: "Autoplay",
         autoplaySelectedClipAria: "Autoplay clip",
         editControlsAria: "Edit controls",
         loopControlsAria: "Loop controls",
@@ -123,7 +123,7 @@ window.INDEX_I18N = {
         replayZoomHint: "Double click the video or press [Esc] key to exit video zoom",
     },
     fr: {
-        pageTitle: "Element Review",
+        pageTitle: "ReVue VRO",
         elementsListAria: "\u00c9l\u00e9ments",
         languageSelectorAria: "Langue",
         languageEnglish: "English",
@@ -139,7 +139,7 @@ window.INDEX_I18N = {
         hwtSeniorFs: "Senior PL (2:00)",
         hwtJuniorSp: "Junior PC (1:20)",
         hwtJuniorFs: "Junior PL (1:45)",
-        autoplaySelectedClipLabel: "Lecture auto du clip",
+        autoplaySelectedClipLabel: "Lecture auto",
         autoplaySelectedClipAria: "Lecture automatique du clip s\u00e9lectionn\u00e9",
         editControlsAria: "Commandes d'\u00e9dition",
         loopControlsAria: "Commandes de boucle",

@@ -10,11 +10,12 @@ using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using ElementReview.Models;
-using ElementReview.Services;
-using ElementReview.Shell;
+using ReVueJudge.Models;
+using ReVueVRO.Models;
+using ReVueVRO.Services;
+using ReVueVRO.Shell;
 
-namespace ElementReview.Hosting;
+namespace ReVueVRO.Hosting;
 
 public static class AppServer
 {
@@ -31,7 +32,7 @@ public static class AppServer
         while (current != null)
         {
             var candidate = current.FullName;
-            var hasProjectFile = File.Exists(Path.Combine(candidate, "ElementReview.csproj"));
+            var hasProjectFile = File.Exists(Path.Combine(candidate, "ReVueVRO.csproj"));
             var hasWwwroot = Directory.Exists(Path.Combine(candidate, "wwwroot"));
 
             if (hasProjectFile && hasWwwroot)
@@ -52,6 +53,8 @@ public static class AppServer
         });
         builder.WebHost.UseUrls(ListenUrl);
         AppPaths.EnsureLocalDataDirectory();
+        AppPaths.EnsureVroDataDirectory();
+        AppPaths.EnsureSharedDataFiles(builder.Environment.ContentRootPath);
         builder.Services.AddSingleton<SessionManager>();
         builder.Services.AddSingleton<MediaMtxManager>();
         builder.Services.AddSingleton<RecorderManager>();
@@ -154,7 +157,7 @@ public static class AppServer
             if (!isLoopback)
             {
                 http.Response.StatusCode = StatusCodes.Status403Forbidden;
-                await http.Response.WriteAsync("This endpoint is only available on the Element Review computer.");
+                await http.Response.WriteAsync("This endpoint is only available on the ReVue VRO computer.");
                 return;
             }
 
@@ -162,7 +165,7 @@ public static class AppServer
             {
                 http.Response.StatusCode = StatusCodes.Status401Unauthorized;
                 http.Response.Headers[HeaderNames.WWWAuthenticate] = "Bearer";
-                await http.Response.WriteAsync("Missing or invalid Element Review operator token.");
+                await http.Response.WriteAsync("Missing or invalid ReVue VRO operator token.");
                 return;
             }
 
@@ -178,7 +181,7 @@ public static class AppServer
             cfg.RtspTransportProtocol = NormalizeRtspTransportProtocol(cfg.RtspTransportProtocol);
             if (cfg.LowresVideoBitrate <= 0)
             {
-                cfg.LowresVideoBitrate = 2500;
+                cfg.LowresVideoBitrate = 3500;
             }
             if (cfg.LowresVideoGop < 1)
             {
@@ -186,7 +189,7 @@ public static class AppServer
             }
             if (cfg.HighresVideoGop < 1)
             {
-                cfg.HighresVideoGop = 10;
+                cfg.HighresVideoGop = 2;
             }
 
             var cssLink = cfg.CSSLink?.Trim();
@@ -210,22 +213,22 @@ public static class AppServer
             return cfg;
         }
 
-        static JudgeVideoReplayConfig NormalizeJudgeVideoReplayConfig(JudgeVideoReplayConfig? cfg)
+        static ReVueJudgeConfig NormalizeReVueJudgeConfig(ReVueJudgeConfig? cfg)
         {
-            cfg ??= new JudgeVideoReplayConfig();
+            cfg ??= new ReVueJudgeConfig();
             cfg.ServerIp = string.IsNullOrWhiteSpace(cfg.ServerIp)
                 ? "127.0.0.1"
                 : cfg.ServerIp.Trim();
             cfg.Language = string.Equals(cfg.Language?.Trim(), "fr", StringComparison.OrdinalIgnoreCase)
                 ? "fr"
                 : "en";
-            cfg.Role = NormalizeJudgeVideoReplayRole(cfg.Role);
-            cfg.JudgeUI = NormalizeJudgeVideoReplayRoleUi(
+            cfg.Role = NormalizeReVueJudgeRole(cfg.Role);
+            cfg.JudgeUI = NormalizeReVueJudgeRoleUi(
                 cfg.JudgeUI,
                 displayTimerStopwatch: true,
                 displayDanceLiftPresets: false,
                 updateVideoWhileScrubbing: true);
-            cfg.RefereeUI = NormalizeJudgeVideoReplayRoleUi(
+            cfg.RefereeUI = NormalizeReVueJudgeRoleUi(
                 cfg.RefereeUI,
                 displayTimerStopwatch: true,
                 displayDanceLiftPresets: true,
@@ -234,7 +237,7 @@ public static class AppServer
             return cfg;
         }
 
-        static string NormalizeJudgeVideoReplayRole(string? role)
+        static string NormalizeReVueJudgeRole(string? role)
         {
             return role?.Trim().ToLowerInvariant() switch
             {
@@ -244,23 +247,23 @@ public static class AppServer
             };
         }
 
-        static JudgeVideoReplayRoleUiConfig NormalizeJudgeVideoReplayRoleUi(
-            JudgeVideoReplayRoleUiConfig? cfg,
+        static ReVueJudgeRoleUiConfig NormalizeReVueJudgeRoleUi(
+            ReVueJudgeRoleUiConfig? cfg,
             bool displayTimerStopwatch,
             bool displayDanceLiftPresets,
             bool updateVideoWhileScrubbing)
         {
-            cfg ??= new JudgeVideoReplayRoleUiConfig();
-            cfg.DisplayTimerStopwatch = NormalizeJudgeVideoReplayBooleanValue(cfg.DisplayTimerStopwatch, displayTimerStopwatch);
-            cfg.DisplayDanceLiftPresets = NormalizeJudgeVideoReplayBooleanValue(cfg.DisplayDanceLiftPresets, displayDanceLiftPresets);
-            cfg.UpdateVideoWhileScrubbing = NormalizeJudgeVideoReplayBooleanValue(cfg.UpdateVideoWhileScrubbing, updateVideoWhileScrubbing);
+            cfg ??= new ReVueJudgeRoleUiConfig();
+            cfg.DisplayTimerStopwatch = NormalizeReVueJudgeBooleanValue(cfg.DisplayTimerStopwatch, displayTimerStopwatch);
+            cfg.DisplayDanceLiftPresets = NormalizeReVueJudgeBooleanValue(cfg.DisplayDanceLiftPresets, displayDanceLiftPresets);
+            cfg.UpdateVideoWhileScrubbing = NormalizeReVueJudgeBooleanValue(cfg.UpdateVideoWhileScrubbing, updateVideoWhileScrubbing);
             return cfg;
         }
 
-        static string NormalizeJudgeVideoReplayBooleanValue(object? value, bool defaultValue)
-            => IsJudgeVideoReplayBooleanValueEnabled(value, defaultValue) ? "true" : "false";
+        static string NormalizeReVueJudgeBooleanValue(object? value, bool defaultValue)
+            => IsReVueJudgeBooleanValueEnabled(value, defaultValue) ? "true" : "false";
 
-        static bool IsJudgeVideoReplayBooleanValueEnabled(object? value, bool defaultValue)
+        static bool IsReVueJudgeBooleanValueEnabled(object? value, bool defaultValue)
         {
             if (value is bool enabled)
             {
@@ -273,7 +276,7 @@ public static class AppServer
                 {
                     JsonValueKind.True => true,
                     JsonValueKind.False => false,
-                    JsonValueKind.String => IsJudgeVideoReplayBooleanValueEnabled(element.GetString(), defaultValue),
+                    JsonValueKind.String => IsReVueJudgeBooleanValueEnabled(element.GetString(), defaultValue),
                     _ => defaultValue
                 };
             }
@@ -309,9 +312,9 @@ public static class AppServer
         DateTime cachedConfigWriteUtc = DateTime.MinValue;
         bool cachedConfigExists = false;
 
-        JudgeVideoReplayConfig? cachedJudgeVideoReplayConfig = null;
-        DateTime cachedJudgeVideoReplayConfigWriteUtc = DateTime.MinValue;
-        bool cachedJudgeVideoReplayConfigExists = false;
+        ReVueJudgeConfig? cachedReVueJudgeConfig = null;
+        DateTime cachedReVueJudgeConfigWriteUtc = DateTime.MinValue;
+        bool cachedReVueJudgeConfigExists = false;
 
         string? cachedSessionInfoPath = null;
         DateTime cachedSessionInfoWriteUtc = DateTime.MinValue;
@@ -321,7 +324,7 @@ public static class AppServer
 
         AppConfig LoadConfig()
         {
-            var path = AppPaths.LocalConfigPath;
+            var path = AppPaths.LocalVroConfigPath;
             if (!File.Exists(path))
             {
                 var cfg = NormalizeConfig(new AppConfig());
@@ -368,7 +371,7 @@ public static class AppServer
         void SaveConfig(AppConfig cfg)
         {
             cfg = NormalizeConfig(cfg);
-            var path = AppPaths.LocalConfigPath;
+            var path = AppPaths.LocalVroConfigPath;
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             File.WriteAllText(path, JsonSerializer.Serialize(cfg, jsonOpts));
             cachedConfig = cfg;
@@ -376,42 +379,42 @@ public static class AppServer
             cachedConfigExists = true;
         }
 
-        JudgeVideoReplayConfig LoadJudgeVideoReplayConfig()
+        ReVueJudgeConfig LoadReVueJudgeConfig()
         {
-            var path = AppPaths.LocalJudgeVideoReplayConfigPath;
+            var path = AppPaths.LocalVroRemoteReplayConfigPath;
             if (!File.Exists(path))
             {
-                var cfg = NormalizeJudgeVideoReplayConfig(new JudgeVideoReplayConfig());
-                SaveJudgeVideoReplayConfig(cfg);
+                var cfg = NormalizeReVueJudgeConfig(new ReVueJudgeConfig());
+                SaveReVueJudgeConfig(cfg);
                 return cfg;
             }
 
             var writeUtc = File.GetLastWriteTimeUtc(path);
-            if (cachedJudgeVideoReplayConfig != null && cachedJudgeVideoReplayConfigExists && cachedJudgeVideoReplayConfigWriteUtc == writeUtc)
-                return cachedJudgeVideoReplayConfig;
+            if (cachedReVueJudgeConfig != null && cachedReVueJudgeConfigExists && cachedReVueJudgeConfigWriteUtc == writeUtc)
+                return cachedReVueJudgeConfig;
 
             try
             {
                 var json = File.ReadAllText(path);
-                cachedJudgeVideoReplayConfig = NormalizeJudgeVideoReplayConfig(JsonSerializer.Deserialize<JudgeVideoReplayConfig>(json, jsonOpts));
-                SaveJudgeVideoReplayConfig(cachedJudgeVideoReplayConfig);
-                return cachedJudgeVideoReplayConfig;
+                cachedReVueJudgeConfig = NormalizeReVueJudgeConfig(JsonSerializer.Deserialize<ReVueJudgeConfig>(json, jsonOpts));
+                SaveReVueJudgeConfig(cachedReVueJudgeConfig);
+                return cachedReVueJudgeConfig;
             }
             catch
             {
-                return NormalizeJudgeVideoReplayConfig(new JudgeVideoReplayConfig());
+                return NormalizeReVueJudgeConfig(new ReVueJudgeConfig());
             }
         }
 
-        void SaveJudgeVideoReplayConfig(JudgeVideoReplayConfig cfg)
+        void SaveReVueJudgeConfig(ReVueJudgeConfig cfg)
         {
-            cfg = NormalizeJudgeVideoReplayConfig(cfg);
-            var path = AppPaths.LocalJudgeVideoReplayConfigPath;
+            cfg = NormalizeReVueJudgeConfig(cfg);
+            var path = AppPaths.LocalVroRemoteReplayConfigPath;
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             File.WriteAllText(path, JsonSerializer.Serialize(cfg, jsonOpts));
-            cachedJudgeVideoReplayConfig = cfg;
-            cachedJudgeVideoReplayConfigWriteUtc = File.GetLastWriteTimeUtc(path);
-            cachedJudgeVideoReplayConfigExists = true;
+            cachedReVueJudgeConfig = cfg;
+            cachedReVueJudgeConfigWriteUtc = File.GetLastWriteTimeUtc(path);
+            cachedReVueJudgeConfigExists = true;
         }
 
         static AppConfig MergeConfig(AppConfig existing, AppConfig incoming)
@@ -636,7 +639,7 @@ public static class AppServer
 
         app.MapGet("/api/judge-video-replay/config", () =>
         {
-            return Results.Json(LoadJudgeVideoReplayConfig(), jsonOpts);
+            return Results.Json(LoadReVueJudgeConfig(), jsonOpts);
         });
 
         app.MapGet("/api/appinfo", () =>
@@ -658,10 +661,10 @@ public static class AppServer
             return Results.Json(cfg, jsonOpts);
         });
 
-        app.MapPost("/api/judge-video-replay/config", (JudgeVideoReplayConfig cfg) =>
+        app.MapPost("/api/judge-video-replay/config", (ReVueJudgeConfig cfg) =>
         {
-            SaveJudgeVideoReplayConfig(cfg);
-            return Results.Json(LoadJudgeVideoReplayConfig(), jsonOpts);
+            SaveReVueJudgeConfig(cfg);
+            return Results.Json(LoadReVueJudgeConfig(), jsonOpts);
         });
 
         app.MapGet("/api/sessionInfo", (SessionManager session) =>

@@ -1,7 +1,7 @@
 import { BTN_DIR, BTN_SIZE, approxEqual, clamp, isTypingTarget, apiPost } from "./app-utils.js";
 
 // ReplayController manages replay-local behavior such as transport, scrubbing,
-// loops, zoom, and clip edits while ElementReviewApp keeps the shared session state.
+// loops, zoom, and clip edits while ReVueVROApp keeps the shared session state.
 const SPEED_BUTTON_DEFS = [
     { label: "REVERSE 1X", display: "Reverse 1x", def: -1.0, icon: "play-rev-1x.png" },
     { label: "QUARTER SPEED", display: "Slower", def: 0.25, icon: "play-025x.png" },

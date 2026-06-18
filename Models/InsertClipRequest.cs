@@ -1,3 +1,3 @@
-namespace ElementReview.Models;
+namespace ReVueVRO.Models;
 
 public record InsertClipRequest(double startSeconds, double endSeconds);

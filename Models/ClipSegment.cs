@@ -1,4 +1,4 @@
-namespace ElementReview.Models;
+namespace ReVueVRO.Models;
 
 public class ClipSegment
 {

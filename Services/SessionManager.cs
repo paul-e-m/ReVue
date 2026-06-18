@@ -1,7 +1,7 @@
 using System.Text.Json;
-using ElementReview.Models;
+using ReVueVRO.Models;
 
-namespace ElementReview.Services;
+namespace ReVueVRO.Services;
 
 // Holds the in-memory session state for a single competitor, including clip timing,
 // replay edits, undo/redo state, and review-history flags derived from SessionInfo.

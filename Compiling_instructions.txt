@@ -4,15 +4,17 @@ Compiling instructions:
 2. cd into source directory (e.g. cd "P:\pCloud Sync\Data Specialist\Current ElementReview-dev")
 3. Run this command in Powershell:
 
-ELEMENT REVIEW:
+REVUE VRO:
 cd "P:\pCloud Sync\Data Specialist\Current ElementReview-dev"
-dotnet publish -c Release -r win-x64 --self-contained true /p:PublishSingleFile=true /p:IncludeNativeLibrariesForSelfExtract=true
+dotnet publish .\ReVueVRO.csproj -c Release -r win-x64 --self-contained true /p:PublishSingleFile=true /p:IncludeNativeLibrariesForSelfExtract=true
 
-JUDGE VIDEO REPLAY:
+REVUE JUDGE:
 cd "P:\pCloud Sync\Data Specialist\Current ElementReview-dev"
-dotnet publish .\JudgeVideoReplay\JudgeVideoReplay.csproj -c Release -r win-x64 --self-contained true /p:PublishSingleFile=true /p:IncludeNativeLibrariesForSelfExtract=true
+dotnet publish .\ReVue-Judge\ReVue-Judge.csproj -c Release -r win-x64 --self-contained true /p:PublishSingleFile=true /p:IncludeNativeLibrariesForSelfExtract=true
 
-The ElementReview executable binary will be located in \bin\Release\net10.0-windows\win-x64\publish\
-The JudgeVideoReplay executable binary will be located in \JudgeVideoReplay\bin\Release\net10.0-windows\win-x64\publish\
+The ReVue VRO executable binary will be located in \bin\Release\net10.0-windows\win-x64\publish\
+The ReVue Judge executable binary will be located in \ReVue-Judge\bin\Release\net10.0-windows\win-x64\publish\
 
-Note: Both ElementReview and JudgeVideoReplay use WebView2. Microsoft says the Evergreen WebView2 Runtime is preinstalled on Windows 11 and installed on most eligible Windows 10 devices, but the runtime should still be included or installed for event laptops to cover machines where it is missing. Use the Microsoft Edge WebView2 Evergreen Runtime installer.
+After publishing, run `.\sign-artifacts.ps1` from the project root to sign and verify the published `ReVue-VRO.exe`, `ReVue-Judge.exe`, and the VRO installer in `dist\` if it has been created.
+
+Note: Both ReVue VRO and ReVue Judge use WebView2. Microsoft says the Evergreen WebView2 Runtime is preinstalled on Windows 11 and installed on most eligible Windows 10 devices, but the runtime should still be included or installed for event laptops to cover machines where it is missing. Use the Microsoft Edge WebView2 Evergreen Runtime installer.

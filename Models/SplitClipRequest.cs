@@ -1,3 +1,3 @@
-namespace ElementReview.Models;
+namespace ReVueVRO.Models;
 
 public record SplitClipRequest(int index, double splitSeconds);

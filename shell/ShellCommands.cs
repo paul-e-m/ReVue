@@ -1,4 +1,4 @@
-namespace ElementReview.Shell;
+namespace ReVueVRO.Shell;
 
 public static class ShellCommands
 {

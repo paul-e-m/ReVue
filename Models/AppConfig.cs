@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace ElementReview.Models;
+namespace ReVueVRO.Models;
 
 public class AppConfig
 {
@@ -30,11 +30,11 @@ public class AppConfig
 
     [JsonPropertyName("highresVideoGop")]
     [JsonPropertyOrder(8)]
-    public int HighresVideoGop { get; set; } = 10;
+    public int HighresVideoGop { get; set; } = 2;
 
     [JsonPropertyName("lowresVideoBitrate")]
     [JsonPropertyOrder(9)]
-    public int LowresVideoBitrate { get; set; } = 2500;
+    public int LowresVideoBitrate { get; set; } = 3500;
 
     [JsonPropertyOrder(10)]
     [JsonPropertyName("lowresVideoGop")]
