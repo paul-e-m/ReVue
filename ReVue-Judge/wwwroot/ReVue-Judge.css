@@ -13,6 +13,8 @@
     --transportBtnBlueDark: #2d4d99;
     --transportBtnBorder: rgba(214, 227, 255, 0.34);
     --alertRed: #ff4d5f;
+    --judgeInfoBlue: #3f51b5;
+    --judgeInfoNeon: #39ff14;
 }
 
 * {
@@ -79,7 +81,7 @@ body {
     height: 34px;
     max-width: none;
     padding: 6px 10px;
-    background: #3F51B5;
+    background: var(--judgeInfoBlue);
     color: #FFFFFF;
     border: 0;
     border-radius: 0;
@@ -94,12 +96,31 @@ body {
     gap: 12px;
 }
 
+.reVueJudgeSessionInfo.isFinalized {
+    animation: reVueJudgeFinalizedFlash 1s steps(1, end) infinite;
+    box-shadow: inset 0 0 0 1px rgba(57, 255, 20, 0.55), 0 0 16px rgba(57, 255, 20, 0.22);
+}
+
 .reVueJudgeSessionInfoText {
     min-width: 0;
     flex: 1 1 auto;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+@keyframes reVueJudgeFinalizedFlash {
+    0%, 49.999% {
+        background: var(--judgeInfoBlue);
+    }
+
+    50%, 99.999% {
+        background: var(--judgeInfoNeon);
+    }
+
+    100% {
+        background: var(--judgeInfoBlue);
+    }
 }
 
 .reVueJudgeServerStatus {

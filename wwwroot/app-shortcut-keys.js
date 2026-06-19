@@ -285,6 +285,10 @@ export class ShortcutKeysController {
     }
 
     jumpToHalfway() {
+        if (!this.app.hasHalfwayTimeAvailable?.()) {
+            return;
+        }
+
         const halfwaySeconds = Number(this.app.getHalfwaySeconds?.() ?? null);
         const programStart = Number(this.app.programTimerStartOffsetSeconds ?? null);
         const duration = this.replay.getReplayDurSeconds();

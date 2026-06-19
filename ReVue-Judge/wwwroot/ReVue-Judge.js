@@ -12,7 +12,7 @@
     const EMPTY_STATE_WAITING_FOR_SERVER = "WAITING FOR VRO SERVER / EN ATTENTE DU SERVEUR VRO";
     const EMPTY_STATE_NO_CLIPS = "WAITING FOR VIDEO DATA / EN ATTENTE DES DONNEES VIDEO";
     const EMPTY_STATE_SELECTED_CLIP_MISSING = "The selected video clip is not currently available";
-    const SESSION_INFO_POLL_INTERVAL_MS = 5000;
+    const SESSION_INFO_POLL_INTERVAL_MS = 2500;
     const STOPWATCH_PLAYHEAD_CLASSES = ["isStopwatchPending", "isStopwatchPositive", "isStopwatchNegative"];
 
     const dom = {
@@ -68,6 +68,7 @@
         clips: [],
         clipMap: new Map(),
         elementMeta: {},
+        sessionInfoFinalized: false,
         selectedClipIndex: null,
         // Non-menu mode tracks a specific requested element number so the
         // background monitor can restore that same element if replay returns.
@@ -286,7 +287,21 @@
         return String(payload[propertyName] ?? "").trim();
     }
 
+    function readSessionInfoBooleanField(payload, propertyName) {
+        const raw = readSessionInfoField(payload, propertyName).toLowerCase();
+        return raw === "true" || raw === "1" || raw === "yes" || raw === "on";
+    }
+
+    function readSessionInfoFinalizedField(payload) {
+        return readSessionInfoBooleanField(payload, "elementsAreFinalized") ||
+            readSessionInfoBooleanField(payload, "elementAreFinalized");
+    }
+
     function buildSessionInfoText(payload) {
+        if (readSessionInfoFinalizedField(payload)) {
+            return reVueJudgeSettingsText("elementsAreFinalized");
+        }
+
         const leftParts = [
             readSessionInfoField(payload, "categoryName"),
             readSessionInfoField(payload, "categoryDiscipline"),
@@ -306,12 +321,16 @@
 
     function updateSessionInfoBar() {
         const emptyStateActive = Boolean(dom.emptyState && !dom.emptyState.classList.contains("hidden"));
-        const text = emptyStateActive ? "" : (state.sessionInfoText || "");
+        const finalizedActive = state.sessionInfoFinalized && !emptyStateActive;
+        const text = finalizedActive
+            ? reVueJudgeSettingsText("elementsAreFinalized")
+            : (emptyStateActive ? "" : (state.sessionInfoText || ""));
         if (dom.reVueJudgeSessionInfoText) {
             dom.reVueJudgeSessionInfoText.textContent = text;
         }
         if (dom.reVueJudgeSessionInfo) {
             dom.reVueJudgeSessionInfo.classList.toggle("hidden", !IS_REVUE_JUDGE_HOST && !(text || emptyStateActive));
+            dom.reVueJudgeSessionInfo.classList.toggle("isFinalized", finalizedActive);
         }
     }
 
@@ -757,6 +776,7 @@
             dom.reVueJudgeSettingsLanguage.setAttribute("aria-label", reVueJudgeSettingsText("languageSelectorAria"));
         }
         syncAutoplaySelectedClipToggle();
+        updateSessionInfoBar();
     }
 
     function writeReVueJudgeSettingsForm(config) {
@@ -1273,6 +1293,7 @@
         try {
             const payload = await fetchJson(`/api/sessionInfo?ts=${now}`);
             state.elementMeta = normalizeElementMeta(payload);
+            state.sessionInfoFinalized = readSessionInfoFinalizedField(payload);
             state.sessionInfoText = buildSessionInfoText(payload);
             const halfwaySeconds = readSessionInfoTimeSeconds(payload, "segmentProgHalfTime");
             state.sessionHalfwaySeconds = Number.isFinite(halfwaySeconds) && halfwaySeconds > 0
@@ -1280,6 +1301,7 @@
                 : null;
         } catch {
             state.elementMeta = {};
+            state.sessionInfoFinalized = false;
             state.sessionHalfwaySeconds = null;
             state.sessionInfoText = "";
         }

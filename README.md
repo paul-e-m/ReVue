@@ -248,14 +248,19 @@ The app uses `SessionInfo.json` data for:
 - saved-video folder naming: `categoryName`, `categoryDiscipline`, `categoryFlight`, `segmentName`
 - saved-video file naming: `competitorLastName`, `competitorFirstName`, `competitorClub`, `competitorSection`
 
-Halfway/program timing controls are shown only when all of these are true:
+Set/Reset Start buttons are shown when either of these is true:
+
+- `CSSLink` is anything other than `Legacy`
+- `categoryName` is `Senior` or `Junior`, `categoryDiscipline` is `Women` or `Men`, and `segmentName` is `Free Program` or `Short Program`
+
+Jump to Halfway, halfway display, halfway marker, and the `H` halfway shortcut are shown only when all of these are true:
 
 - `categoryName` is `Senior` or `Junior`
 - `categoryDiscipline` is `Women` or `Men`
 - `segmentName` is `Free Program` or `Short Program`
 - `segmentProgHalfTime` contains a valid positive time
 
-When those conditions are not met, Set/Reset Start, Jump to Halfway, halfway display, halfway marker, and the `H` halfway shortcut are hidden or inactive.
+When those conditions are not met, the halfway display, halfway marker, Jump to Halfway button, and `H` shortcut are hidden or inactive.
 
 Unknown extra properties are ignored by the current app.
 

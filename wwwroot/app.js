@@ -299,6 +299,11 @@ export class ReVueVROApp {
         return false;
     }
 
+    shouldShowHalfwayControls() {
+        const cssLink = this.normalizeCssLinkValue(this.appConfig?.CSSLink);
+        return cssLink !== "Legacy" || this.isHalfwayInterfaceEligible();
+    }
+
     normalizeSessionInfoMatchValue(value) {
         return String(value ?? "").trim().toLowerCase();
     }
@@ -339,7 +344,7 @@ export class ReVueVROApp {
     updateHalfwayTimeValue() {
         const halfwaySeconds = this.getHalfwaySeconds();
         const cssLink = this.normalizeCssLinkValue(this.appConfig?.CSSLink);
-        const show = cssLink !== "None" && Number.isFinite(halfwaySeconds) && halfwaySeconds > 0;
+        const show = cssLink !== "None" && this.hasHalfwayTimeAvailable();
         const text = show ? this.formatHalfwayTimeValue(halfwaySeconds) : "";
 
         const apply = (valueRef, colRef, cardRef) => {
@@ -1529,7 +1534,7 @@ export class ReVueVROApp {
     }
 
     startProgramTimer() {
-        if (!this.hasHalfwayTimeAvailable()) return;
+        if (!this.shouldShowHalfwayControls()) return;
 
         if (this.state?.mode === "record") {
             if (!this.canSetProgramStartInRecord()) return;
@@ -1561,19 +1566,19 @@ export class ReVueVROApp {
     }
 
     canSetProgramStartInRecord() {
-        if (!this.hasHalfwayTimeAvailable()) return false;
+        if (!this.shouldShowHalfwayControls()) return false;
         if (this.state?.mode !== "record") return false;
         if (!this.state?.isRecording || this.isStopPending) return false;
         return !this.hasProgramTimerStarted() && !this.recordProgramStartLockedOut;
     }
 
     updateProgramStartButtons() {
-        const showHalfwayControls = this.hasHalfwayTimeAvailable();
+        const showHalfwayControls = this.shouldShowHalfwayControls();
         const configs = [
             [this.refs.recordProgramStartBtn, this.canSetProgramStartInRecord(), "timer"],
             [
                 this.refs.replayProgramStartBtn,
-                this.state?.mode === "replay" && showHalfwayControls,
+                this.state?.mode === "replay" && this.shouldShowHalfwayControls(),
                 this.hasProgramTimerStarted() ? "timerRestart" : "timer",
             ],
         ];
@@ -1686,6 +1691,8 @@ export class ReVueVROApp {
     }
 
     getHalfwaySeconds() {
+        if (!this.hasHalfwayTimeAvailable()) return null;
+
         const manualSeconds = this.getManualHalfwaySeconds();
         if (Number.isFinite(manualSeconds) && manualSeconds > 0) {
             return manualSeconds;
@@ -1986,6 +1993,7 @@ export class ReVueVROApp {
     }
 
     hasHalfwayMarker() {
+        if (!this.hasHalfwayTimeAvailable()) return false;
         const halfwaySeconds = this.getHalfwaySeconds();
         if (!Number.isFinite(halfwaySeconds) || halfwaySeconds <= 0) return false;
         if (!this.hasProgramTimerStarted()) return false;
