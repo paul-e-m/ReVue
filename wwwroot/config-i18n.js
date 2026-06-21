@@ -68,7 +68,7 @@ window.CONFIG_I18N = {
         saveFailed: "Save failed",
         restartFailed: "Restart failed",
         uiZoom: "UI Zoom (%)",
-        uiZoomHelp: "Default zoom level for the main app window. 100 = normal size."
+        uiZoomHelp: "Default zoom level for the main app window. Increase or decrease to alter button and video frame sizes."
     },
     fr: {
         pageTitle: "Paramètres de ReVue VRO",
@@ -139,6 +139,6 @@ window.CONFIG_I18N = {
         saveFailed: "Échec de l'enregistrement",
         restartFailed: "Échec du redémarrage",
         uiZoom: "Zoom de l'interface (%)",
-        uiZoomHelp: "Niveau de zoom par défaut pour la fenêtre principale de l'application. 100 = taille normale."
+        uiZoomHelp: "Niveau de zoom par défaut pour la fenêtre principale de l'application. Augmentez ou diminuez-le pour modifier la taille des boutons et de la fenêtre video."
     }
 };
