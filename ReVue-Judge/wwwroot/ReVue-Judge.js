@@ -9,8 +9,8 @@
     const REPLAY_POLL_INTERVAL_MS = 2500;
     const RAIL_ELEMENT_ROWS = 15;
     const TIMELINE_INTERVALS_SECONDS = [0.1, 0.5, 1, 5, 15, 30, 60];
-    const EMPTY_STATE_WAITING_FOR_SERVER = "WAITING FOR VRO SERVER / EN ATTENTE DU SERVEUR VRO";
-    const EMPTY_STATE_NO_CLIPS = "WAITING FOR VIDEO DATA / EN ATTENTE DES DONNEES VIDEO";
+    const EMPTY_STATE_WAITING_FOR_SERVER = "waitingForVroServer";
+    const EMPTY_STATE_NO_CLIPS = "waitingForVideoData";
     const EMPTY_STATE_SELECTED_CLIP_MISSING = "The selected video clip is not currently available";
     const SESSION_INFO_POLL_INTERVAL_MS = 2500;
     const STOPWATCH_PLAYHEAD_CLASSES = ["isStopwatchPending", "isStopwatchPositive", "isStopwatchNegative"];
@@ -21,17 +21,20 @@
         elementRailColumn: document.getElementById("elementRailColumn"),
         reVueJudgeAutoplayLabel: document.getElementById("reVueJudgeAutoplayLabel"),
         reVueJudgeAutoplayToggle: document.getElementById("reVueJudgeAutoplayToggle"),
-        reVueJudgeSettingsVersion: document.getElementById("reVueJudgeSettingsVersion"),
+        shortcutOverlay: document.getElementById("shortcutOverlay"),
+        shortcutTitle: document.getElementById("shortcutTitle"),
+        shortcutList: document.getElementById("shortcutList"),
+        shortcutVersion: document.getElementById("shortcutVersion"),
         videoPane: document.getElementById("videoPane"),
         reVueJudgeSessionInfo: document.getElementById("reVueJudgeSessionInfo"),
         reVueJudgeSessionInfoText: document.getElementById("reVueJudgeSessionInfoText"),
         reVueJudgeServerStatusDot: document.getElementById("reVueJudgeServerStatusDot"),
         reVueJudgeSessionRefreshBtn: document.getElementById("reVueJudgeSessionRefreshBtn"),
+        reVueJudgeLanguageSelect: document.getElementById("reVueJudgeLanguageSelect"),
         reVueJudgeSettingsBtn: document.getElementById("reVueJudgeSettingsBtn"),
         reVueJudgeLogoBtn: document.getElementById("reVueJudgeLogoBtn"),
         brandOverlay: document.getElementById("brandOverlay"),
         reVueJudgeSettingsOverlay: document.getElementById("reVueJudgeSettingsOverlay"),
-        reVueJudgeSettingsLanguage: document.getElementById("reVueJudgeSettingsLanguage"),
         reVueJudgeSettingsRole: document.getElementById("reVueJudgeSettingsRole"),
         reVueJudgeSettingsServerIp: document.getElementById("reVueJudgeSettingsServerIp"),
         reVueJudgeSettingsUiZoomPercent: document.getElementById("reVueJudgeSettingsUiZoomPercent"),
@@ -108,7 +111,9 @@
         scrubResumePlayback: false,
         scrubPreviewTimeSeconds: null,
         suppressNextTimelineClick: false,
-        lastSessionInfoLoadMs: 0
+        lastSessionInfoLoadMs: 0,
+        emptyStateMessageKey: null,
+        shortcutOverlayVisible: false
     };
 
     const reVueJudgeTranslations = window.REVUE_JUDGE_I18N || {};
@@ -116,6 +121,7 @@
     const reVueJudgeHostRequests = new Map();
     let reVueJudgeHostRequestId = 0;
     let reVueJudgeSettingsLanguage = "en";
+    let isSavingLanguage = false;
     let reVueJudgeSettingsConfig = {};
 
     reVueJudgeHostBridge?.addEventListener("message", event => {
@@ -406,9 +412,9 @@
     }
 
     function syncReVueJudgeVersionLabel() {
-        if (!dom.reVueJudgeSettingsVersion) return;
-        dom.reVueJudgeSettingsVersion.textContent = state.appVersion ? `v${state.appVersion}` : "";
-        dom.reVueJudgeSettingsVersion.setAttribute("aria-label", state.appVersion ? `Version ${state.appVersion}` : "Version");
+        if (!dom.shortcutVersion) return;
+        dom.shortcutVersion.textContent = state.appVersion ? `v${state.appVersion}` : "";
+        dom.shortcutVersion.setAttribute("aria-label", state.appVersion ? `Version ${state.appVersion}` : "Version");
     }
 
     function clearTimelineSurface() {
@@ -437,8 +443,10 @@
         return visible;
     }
 
-    function setEmptyState(active, message = EMPTY_STATE_NO_CLIPS) {
+    function setEmptyState(active, messageOrKey = EMPTY_STATE_NO_CLIPS, translate = false) {
         const wasActive = !!dom.emptyState && !dom.emptyState.classList.contains("hidden");
+        const message = translate ? reVueJudgeSettingsText(messageOrKey) : messageOrKey;
+        state.emptyStateMessageKey = translate ? messageOrKey : null;
         if (dom.emptyStateMessage) {
             dom.emptyStateMessage.textContent = message;
         }
@@ -754,6 +762,13 @@
         return reVueJudgeTranslations[reVueJudgeSettingsLanguage]?.[key] ?? reVueJudgeTranslations.en?.[key] ?? key;
     }
 
+    function syncReVueJudgeLanguageSelect() {
+        if (!dom.reVueJudgeLanguageSelect) return;
+        dom.reVueJudgeLanguageSelect.value = reVueJudgeSettingsLanguage;
+        dom.reVueJudgeLanguageSelect.disabled = isSavingLanguage;
+        dom.reVueJudgeLanguageSelect.setAttribute("aria-label", reVueJudgeSettingsText("languageSelectorAria"));
+    }
+
     function setReVueJudgeSettingsStatus(textOrKey, kind = "", translate = false) {
         if (!dom.reVueJudgeSettingsStatus) return;
         dom.reVueJudgeSettingsStatus.textContent = translate ? reVueJudgeSettingsText(textOrKey) : textOrKey;
@@ -761,6 +776,7 @@
     }
 
     function applyReVueJudgeSettingsI18n() {
+        document.documentElement.lang = reVueJudgeSettingsLanguage;
         document.querySelectorAll("[data-judge-video-replay-i18n]").forEach(element => {
             const key = element.getAttribute("data-judge-video-replay-i18n");
             if (!key) return;
@@ -771,12 +787,96 @@
             if (!key) return;
             element.setAttribute("aria-label", reVueJudgeSettingsText(key));
         });
-        if (dom.reVueJudgeSettingsLanguage) {
-            dom.reVueJudgeSettingsLanguage.value = reVueJudgeSettingsLanguage;
-            dom.reVueJudgeSettingsLanguage.setAttribute("aria-label", reVueJudgeSettingsText("languageSelectorAria"));
+        syncReVueJudgeLanguageSelect();
+        if (dom.emptyStateMessage && state.emptyStateMessageKey) {
+            dom.emptyStateMessage.textContent = reVueJudgeSettingsText(state.emptyStateMessageKey);
+        }
+        if (state.shortcutOverlayVisible) {
+            renderReVueJudgeShortcutOverlay();
         }
         syncAutoplaySelectedClipToggle();
         updateSessionInfoBar();
+    }
+
+    function getReVueJudgeShortcutItems() {
+        const items = [
+            {
+                key: reVueJudgeSettingsText("shortcutKeyTab"),
+                action: reVueJudgeSettingsText("shortcutActionTab")
+            },
+            {
+                key: reVueJudgeSettingsText("shortcutKeyCtrlPlus"),
+                action: reVueJudgeSettingsText("shortcutActionCtrlPlus")
+            },
+            {
+                key: reVueJudgeSettingsText("shortcutKeyCtrlMinus"),
+                action: reVueJudgeSettingsText("shortcutActionCtrlMinus")
+            },
+            {
+                key: reVueJudgeSettingsText("shortcutKeySpace"),
+                action: reVueJudgeSettingsText("shortcutActionSpace")
+            }
+        ];
+
+        if (state.showTimerControl) {
+            items.push({
+                key: reVueJudgeSettingsText("shortcutKeyT"),
+                action: reVueJudgeSettingsText("shortcutActionT")
+            });
+        }
+
+        items.push({
+            key: reVueJudgeSettingsText("shortcutKeyReplayElementSelect"),
+            action: reVueJudgeSettingsText("shortcutActionReplayElementSelect")
+        });
+
+        items.push({
+            key: reVueJudgeSettingsText("shortcutKeyEscape"),
+            action: reVueJudgeSettingsText("shortcutActionEscape")
+        });
+
+        return items;
+    }
+
+    function renderReVueJudgeShortcutOverlay() {
+        if (dom.shortcutTitle) {
+            dom.shortcutTitle.textContent = reVueJudgeSettingsText("shortcutTitle");
+        }
+        if (dom.shortcutVersion) {
+            dom.shortcutVersion.textContent = state.appVersion ? `v${state.appVersion}` : "";
+        }
+        if (!dom.shortcutList) return;
+
+        dom.shortcutList.innerHTML = getReVueJudgeShortcutItems()
+            .map(item => `
+                <div class="shortcutRow">
+                    <div class="shortcutKey">${item.key}</div>
+                    <div class="shortcutAction">${item.action}</div>
+                </div>
+            `)
+            .join("");
+    }
+
+    function showReVueJudgeShortcutOverlay() {
+        state.shortcutOverlayVisible = true;
+        renderReVueJudgeShortcutOverlay();
+        dom.shortcutOverlay?.classList.remove("hidden");
+        dom.shortcutOverlay?.setAttribute("aria-hidden", "false");
+    }
+
+    function hideReVueJudgeShortcutOverlay() {
+        if (!state.shortcutOverlayVisible) return;
+        state.shortcutOverlayVisible = false;
+        dom.shortcutOverlay?.classList.add("hidden");
+        dom.shortcutOverlay?.setAttribute("aria-hidden", "true");
+    }
+
+    function clearReVueJudgeFocus() {
+        const active = document.activeElement;
+        if (active && active instanceof HTMLElement) {
+            active.blur();
+        }
+        dom.video?.blur();
     }
 
     function writeReVueJudgeSettingsForm(config) {
@@ -805,6 +905,31 @@
             UiZoomPercent: zoomPercent,
             Language: reVueJudgeSettingsLanguage
         };
+    }
+
+    async function setReVueJudgeLanguage(language) {
+        if (isSavingLanguage) return;
+
+        const nextLanguage = normalizeReVueJudgeSettingsLanguage(language);
+        const previousLanguage = normalizeReVueJudgeSettingsLanguage(reVueJudgeSettingsLanguage);
+        if (previousLanguage === nextLanguage) return;
+
+        reVueJudgeSettingsLanguage = nextLanguage;
+        applyReVueJudgeSettingsI18n();
+
+        isSavingLanguage = true;
+        syncReVueJudgeLanguageSelect();
+
+        try {
+            await saveReVueJudgeSettings();
+        } catch (error) {
+            reVueJudgeSettingsLanguage = previousLanguage;
+            applyReVueJudgeSettingsI18n();
+            alert(error?.message || "Unable to save language setting.");
+        } finally {
+            isSavingLanguage = false;
+            syncReVueJudgeLanguageSelect();
+        }
     }
 
     async function loadReVueJudgeSettings() {
@@ -842,25 +967,33 @@
     async function saveReVueJudgeSettings() {
         setReVueJudgeSettingsStatus("savingSettings", "", true);
         const config = readReVueJudgeSettingsForm();
+        isSavingLanguage = true;
+        syncReVueJudgeLanguageSelect();
+
         const hostResponse = postReVueJudgeHostRequest("saveConfig", config);
-        if (hostResponse) {
-            const saved = await hostResponse;
+        try {
+            if (hostResponse) {
+                const saved = await hostResponse;
+                writeReVueJudgeSettingsForm(saved);
+                applySavedReVueJudgeSettings(saved);
+                setReVueJudgeSettingsStatus("settingsSaved", "ok", true);
+                return;
+            }
+
+            const response = await fetch("/api/judge-video-replay/config", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(config)
+            });
+            if (!response.ok) throw new Error(await response.text());
+            const saved = await response.json();
             writeReVueJudgeSettingsForm(saved);
             applySavedReVueJudgeSettings(saved);
             setReVueJudgeSettingsStatus("settingsSaved", "ok", true);
-            return;
+        } finally {
+            isSavingLanguage = false;
+            syncReVueJudgeLanguageSelect();
         }
-
-        const response = await fetch("/api/judge-video-replay/config", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(config)
-        });
-        if (!response.ok) throw new Error(await response.text());
-        const saved = await response.json();
-        writeReVueJudgeSettingsForm(saved);
-        applySavedReVueJudgeSettings(saved);
-        setReVueJudgeSettingsStatus("settingsSaved", "ok", true);
     }
 
     function applySavedReVueJudgeSettings(config) {
@@ -1129,7 +1262,7 @@
 
                     if (!state.clips.length) {
                         state.clip = null;
-                        setEmptyState(true, EMPTY_STATE_NO_CLIPS);
+                        setEmptyState(true, EMPTY_STATE_NO_CLIPS, true);
                         await sleep(REPLAY_POLL_INTERVAL_MS);
                         continue;
                     }
@@ -1157,7 +1290,7 @@
                 state.clipMap = new Map();
                 state.replayMediaToken = "";
                 renderRail();
-                setEmptyState(true, EMPTY_STATE_WAITING_FOR_SERVER);
+                setEmptyState(true, EMPTY_STATE_WAITING_FOR_SERVER, true);
                 await sleep(REPLAY_POLL_INTERVAL_MS);
                 continue;
             }
@@ -1167,7 +1300,7 @@
             state.clipMap = new Map();
             state.replayMediaToken = "";
             renderRail();
-            setEmptyState(true, EMPTY_STATE_NO_CLIPS);
+            setEmptyState(true, EMPTY_STATE_NO_CLIPS, true);
             await sleep(REPLAY_POLL_INTERVAL_MS);
         }
     }
@@ -1188,7 +1321,7 @@
                 state.clipMap = new Map();
                 state.replayMediaToken = "";
                 renderRail();
-                setEmptyState(true, EMPTY_STATE_NO_CLIPS);
+                setEmptyState(true, EMPTY_STATE_NO_CLIPS, true);
                 return;
             }
 
@@ -1267,7 +1400,7 @@
             state.clipMap = new Map();
             state.replayMediaToken = "";
             renderRail();
-            setEmptyState(true, EMPTY_STATE_WAITING_FOR_SERVER);
+                setEmptyState(true, EMPTY_STATE_WAITING_FOR_SERVER, true);
         }
     }
 
@@ -1800,9 +1933,18 @@
     }
 
     function handleReVueJudgeShortcut(event) {
+        if (event.code === "Tab") {
+            event.preventDefault();
+            event.stopPropagation();
+            clearReVueJudgeFocus();
+            if (!event.repeat) showReVueJudgeShortcutOverlay();
+            return;
+        }
+
         if (event.defaultPrevented) return;
-        if (event.repeat) return;
         if (event.altKey || event.ctrlKey || event.metaKey) return;
+
+        if (event.repeat) return;
 
         const target = event.target instanceof HTMLElement ? event.target : null;
         if (isShortcutTextEntryTarget(target)) {
@@ -1831,6 +1973,13 @@
 
         event.preventDefault();
         void selectClipByIndex(elementIndex, { autoplay: state.autoplaySelectedClipEnabled });
+    }
+
+    function handleReVueJudgeShortcutKeyUp(event) {
+        if (event.code !== "Tab") return;
+        event.preventDefault();
+        event.stopPropagation();
+        hideReVueJudgeShortcutOverlay();
     }
 
     async function prepareVideo() {
@@ -2005,9 +2154,8 @@
     dom.reVueJudgeSettingsOverlay?.addEventListener("click", event => {
         if (event.target === dom.reVueJudgeSettingsOverlay) hideReVueJudgeSettings();
     });
-    dom.reVueJudgeSettingsLanguage?.addEventListener("change", () => {
-        reVueJudgeSettingsLanguage = normalizeReVueJudgeSettingsLanguage(dom.reVueJudgeSettingsLanguage.value);
-        applyReVueJudgeSettingsI18n();
+    dom.reVueJudgeLanguageSelect?.addEventListener("change", () => {
+        void setReVueJudgeLanguage(dom.reVueJudgeLanguageSelect.value);
     });
     dom.reVueJudgeLogoBtn?.addEventListener("click", showBrandOverlay);
     dom.brandOverlay?.addEventListener("click", hideBrandOverlay);
@@ -2025,7 +2173,12 @@
     dom.rew3.addEventListener("click", () => void goToTime((dom.video.currentTime || 0) - 3, !dom.video.paused, { allowOutOfClipIndicator: true }));
     dom.fwd3.addEventListener("click", () => void goToTime((dom.video.currentTime || 0) + 3, !dom.video.paused, { allowOutOfClipIndicator: true }));
     dom.fwd10.addEventListener("click", () => void goToTime((dom.video.currentTime || 0) + 10, !dom.video.paused, { allowOutOfClipIndicator: true }));
-    window.addEventListener("keydown", handleReVueJudgeShortcut);
+    window.addEventListener("keydown", handleReVueJudgeShortcut, true);
+    window.addEventListener("keyup", handleReVueJudgeShortcutKeyUp, true);
+    window.addEventListener("blur", hideReVueJudgeShortcutOverlay);
+    document.addEventListener("visibilitychange", () => {
+        if (document.hidden) hideReVueJudgeShortcutOverlay();
+    });
     window.addEventListener("keydown", event => {
         if (event.key === "Escape" && dom.reVueJudgeSettingsOverlay && !dom.reVueJudgeSettingsOverlay.classList.contains("hidden")) {
             hideReVueJudgeSettings();
@@ -2060,7 +2213,7 @@
 
         const targetClipIndex = state.requestedClipIndex;
 
-        setEmptyState(true, EMPTY_STATE_WAITING_FOR_SERVER);
+        setEmptyState(true, EMPTY_STATE_WAITING_FOR_SERVER, true);
         await loadSessionInfo();
 
         const replayContext = await waitForReplayContext(targetClipIndex);

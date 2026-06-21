@@ -29,6 +29,10 @@
                     <button id="reVueJudgeSessionRefreshBtn" class="reVueJudgeSessionRefreshBtn" type="button" title="Refresh" aria-label="Refresh">
                         <img class="reVueJudgeSessionRefreshIcon" src="/img/buttons/refresh.png" alt="" draggable="false" />
                     </button>
+                    <select id="reVueJudgeLanguageSelect" class="reVueJudgeLanguageSelect" aria-label="Language">
+                        <option value="en" data-judge-video-replay-i18n="languageEnglish">English</option>
+                        <option value="fr" data-judge-video-replay-i18n="languageFrench">Français</option>
+                    </select>
                     <button id="reVueJudgeSettingsBtn" class="reVueJudgeSessionSettingsBtn" type="button" title="Settings" aria-label="Settings">
                         <img class="reVueJudgeSessionSettingsIcon" src="/img/buttons/settings.png" alt="" draggable="false" />
                     </button>
@@ -109,14 +113,22 @@
         <div class="brandOverlayMessage">CLICK ANYWHERE TO RETURN TO REVUE JUDGE / CLIQUEZ N'IMPORTE OÃ™ POUR REVENIR Ã€ REVUE JUDGE</div>
     </div>
 
+    <div id="shortcutOverlay" class="shortcutOverlay hidden" aria-hidden="true">
+        <div class="shortcutCard" role="dialog" aria-modal="false" aria-labelledby="shortcutTitle">
+            <div id="shortcutTitle" class="shortcutTitle" data-judge-video-replay-i18n="shortcutTitle">Keyboard Shortcuts</div>
+            <div class="shortcutFrame">
+                <div id="shortcutList" class="shortcutList"></div>
+            </div>
+            <div class="shortcutFooter">
+                <div id="shortcutVersion" class="shortcutVersion"></div>
+            </div>
+        </div>
+    </div>
+
     <div id="reVueJudgeSettingsOverlay" class="reVueJudgeSettingsOverlay hidden" aria-hidden="true">
         <div class="reVueJudgeSettingsDialog" role="dialog" aria-modal="true" aria-labelledby="reVueJudgeSettingsTitle">
             <div class="reVueJudgeSettingsHeader">
                 <h2 id="reVueJudgeSettingsTitle" data-judge-video-replay-i18n="settings">ReVue Judge Settings</h2>
-                <select id="reVueJudgeSettingsLanguage" class="reVueJudgeSettingsLanguage" aria-label="Language">
-                    <option value="en" data-judge-video-replay-i18n="languageEnglish">English</option>
-                    <option value="fr" data-judge-video-replay-i18n="languageFrench">Francais</option>
-                </select>
             </div>
 
             <div class="reVueJudgeSettingsBody">
@@ -149,7 +161,6 @@
 
             <div class="reVueJudgeSettingsFooter">
                 <div id="reVueJudgeSettingsStatus" class="reVueJudgeSettingsStatus"></div>
-                <div id="reVueJudgeSettingsVersion" class="reVueJudgeSettingsVersion" aria-label="Version"></div>
                 <button id="reVueJudgeSettingsSaveBtn" class="reVueJudgeSettingsSaveBtn" type="button" data-judge-video-replay-i18n="saveAndClose">Save and Close</button>
             </div>
         </div>
