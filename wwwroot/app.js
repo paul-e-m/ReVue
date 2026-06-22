@@ -146,7 +146,7 @@ export class ReVueVROApp {
 
         // Cache appconfig early so later interactions do not need an extra fetch.
         this.appConfig = null;
-        this.appVersion = "v0.6.0";
+        this.appVersion = "v1.0.1";
         this.currentLanguage = "en";
         this.i18n = window.INDEX_I18N || {};
         this.buttonImageUrlCache = new Map();
@@ -2439,7 +2439,7 @@ export class ReVueVROApp {
             this.appendClipListEntryContent(
                 container,
                 index,
-                code || "[ element ]",
+                code || `${this.t("elementFallbackLabel")} ${index}`,
                 this.formatClipListTimeRange(start, end),
                 { showDeleteHandle: canDelete }
             );

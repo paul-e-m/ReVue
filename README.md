@@ -8,7 +8,7 @@ ReVue VRO is a Windows desktop recording and replay tool for figure skating comp
 - `ffmpeg` / `ffprobe` for recording
 - MediaMTX for live RTSP relay into the browser UI
 
-The current app version is `v1.0.0`.
+The current app version is `v1.0.1`.
 
 ## What It Does
 
