@@ -29,10 +29,10 @@ Minimum recommended VRO computer for ReVue VRO:
 | CPU | Recent Intel Core i5/i7 or AMD Ryzen 5/7, 4 cores or better | Intel Core i7/i9 or AMD Ryzen 7/9, 6 cores or better |
 | RAM | `16 GB` | `32 GB` if available |
 | Graphics | Integrated graphics may work for basic use | Hardware video encoding support is strongly preferred, such as Intel Quick Sync, NVIDIA NVENC, or AMD hardware encoding |
-| Storage | SSD, `1 TB` minimum |  |
+| Storage | SSD, `500 GB` minimum | SSD, `1 TB` or larger |
 | Network | Wired Gigabit Ethernet is recommended |  |
 
-Do not use a mechanical hard drive for the VRO computer. Avoid small capacity, or bargain no name drives for the VRO computer. ReVue VRO writes and deletes video data continuously, so an SSD gives better recording/replay performance. A `1 TB` or larger SSD is recommended because smaller drives can fill quickly and may wear faster when used repeatedly for video recording workloads. Ensure a minimum 15-20% drive capacity is available at all times.
+Do not use a mechanical hard drive for the VRO computer. Avoid small capacity, or bargain no name drives for the VRO computer. ReVue VRO writes and deletes video data continuously, so an SSD gives better recording/replay performance. A `500 GB` or larger SSD is recommended because smaller drives can fill quickly and may wear faster when used repeatedly for video recording workloads. Ensure a minimum 15-20% drive capacity is available at all times.
 
 For ReVue Judge computers, the requirements are lighter because they receive and play back low-res replay video rather than recording and encoding the main feed.
 
@@ -52,7 +52,7 @@ Recommended live video encoder:
 
 - Use a dedicated encoder that provides an RTSP stream to the VRO computer.
 - If the video camera supports SDI output, the AVMatrix SE-1117 or a similar SDI streaming encoder is recommended. HDMI streaming encoders, such as the J-Tech ENCH-4 HDMI H.264 IPTV Encoder, are also acceptable. However, SDI connections are designed for professional video environments, offer more secure cabling over longer runs, and are generally less prone to accidental disconnection or signal issues than HDMI.
-- The preferred live encoder feed is `1080p 60 fps`. `1080p 30 fps` is acceptable if 60 fpd is not available. `1080i 60` is also acceptable when progressive output is not available. In normal video terminology, `1080i 60` means 60 interlaced fields per second, which is effectively 30 full frames per second. 
+- The preferred live encoder feed is `1080p 60 fps`. `1080p 30 fps` is acceptable if 60 fps is not available. `1080i 60` is also acceptable when progressive output is not available. In normal video terminology, `1080i 60` means 60 interlaced fields per second, which is effectively 30 full frames per second.
 - The important requirement is consistency: the configured/demo video frame rate should match the frame rate produced by the encoder stream.
 
 ## Windows Defender and SmartScreen
@@ -98,7 +98,7 @@ Do not install WebView2 separately on Windows 11 as this runtime is already incl
 5. Set the role to `Judge` or `Referee`.
 6. Save settings.
 
-The `Server IP address` must be the VRO computer IP address, not the judge/referee computer IP address.
+The `Server IP address` must be the VRO computer IP address, not the judge/referee computer IP address. This address MUST be static/fixed (not dynamic).
 
 Example:
 
@@ -134,7 +134,7 @@ When CSS integration is set to `None`, ReVue VRO cannot automatically detect cat
 
 Turn on Demo Mode for training or demonstration purposes. This mode uses a locally stored video instead of an RTSP video stream as an input source. The local video can be customized by replacing the file `demovideo.mp4` located in `%LocalAppData%\ReVue\media\`.
 
-Supported video format:
+Supported demo video format:
 
 	Container: MP4
 	Video codec: H.264 / AVC
@@ -145,9 +145,7 @@ Supported video format:
 
 Avoid: HEVC/H.265, HDR, variable frame rate, unusual codecs.
 
-Turn off Demo Mode for real event recording.
-
-Set the RTSP URL to the video encoder stream URL.
+Turn off Demo Mode for real event recording; instead, set the RTSP URL to the video encoder stream URL.
 
 Example without a special port:
 
@@ -175,11 +173,9 @@ Recommended settings:
 | Low-res Video GOP | `30` | Used by ReVue Judge clients. |
 | Low-res Video Bitrate | `3500` to `4000` kbps | Higher values improve quality but use more network bandwidth. |
 
-Use `3500` kbps when bandwidth is limited or many clients are connected. Use `4000` kbps when the event network is strong and better judge replay quality is desired.
+Use `3500` kbps or lower when bandwidth is limited or many clients are connected. Use `4000` kbps when the event network is strong and better judge replay quality is desired.
 
-Use `2500` kbps when bandwidth is limited or many clients are connected. Use `4000` kbps or higher when the event network is strong and better judge replay quality is desired.
-
-Enable `Use Hardware Encoding` in most situations. Disable it only if hardware encoding causes a confirmed video encoding issue. Disabling Hardware Encoding will significantly increase the CPU load on the VRO computer. CPU load should be monitored under real event demands following intial configuration.
+Enable `Use Hardware Encoding` in most situations. Disable it only if hardware encoding causes a confirmed video encoding issue. Disabling Hardware Encoding will significantly increase the CPU load on the VRO computer. CPU load should be monitored under real event demands following initial configuration.
 
 ## Firewall and Network Requirements
 
@@ -221,7 +217,7 @@ On the VRO computer:
 On each judge/referee computer:
 
 1. Start ReVue Judge.
-2. Open the settings screen by clicking the gear icon located at the top right of the window.
+2. Open the settings screen by clicking the gear icon.
 3. Enter the VRO computer IP address.
 4. Select the correct role (Judge or Referee)
 5. Save settings.
@@ -243,11 +239,11 @@ If ReVue VRO does not show video:
 - Confirm the RTSP URL is correct.
 - Confirm the encoder is powered on and connected to the network.
 - Try `UDP` first, then try `TCP` if the stream is unstable or unavailable.
-- Confirm the encoder IP address is reachable from the VRO computer.
+- Confirm the encoder IP address is reachable from the VRO computer (e.g., open a command prompt and ping the IP address).
 
 If judge replay video is low quality or stutters:
 
-- Increase low-res bitrate toward `4000` kbps (or possibly even higher) for better quality if bandwidth allows.
-- Reduce low-res bitrate toward `3500` kbps (or possibly even lower) if the network is congested.
+- Increase low-res bitrate above `4000` kbps (or possibly even higher) for better quality if bandwidth allows.
+- Reduce low-res bitrate (e.g., `2500` kbps) if the network is congested.
 - Confirm all clients have strong wired or wireless network connectivity.
 - Keep low-res GOP at `30` unless directed otherwise.

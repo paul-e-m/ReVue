@@ -300,8 +300,7 @@ export class ReVueVROApp {
     }
 
     shouldShowHalfwayControls() {
-        const cssLink = this.normalizeCssLinkValue(this.appConfig?.CSSLink);
-        return cssLink !== "Legacy" || this.isHalfwayInterfaceEligible();
+        return this.hasHalfwayTimeAvailable();
     }
 
     normalizeSessionInfoMatchValue(value) {
