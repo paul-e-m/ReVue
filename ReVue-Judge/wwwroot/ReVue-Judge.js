@@ -1734,7 +1734,7 @@
 
             const code = document.createElement("div");
             code.className = "elementRailCode";
-            code.textContent = meta.baseCode || "[ element ]";
+            code.textContent = meta.baseCode || `${reVueJudgeSettingsText("elementFallbackLabel")} ${clip.index}`;
 
             info.appendChild(code);
             button.appendChild(num);
