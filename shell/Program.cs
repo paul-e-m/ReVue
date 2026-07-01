@@ -12,6 +12,15 @@ internal static class Program
     {
         ApplicationConfiguration.Initialize();
 
+        using var singleInstance = new SingleInstanceCoordinator();
+        if (!singleInstance.TryBecomePrimaryInstance())
+        {
+            singleInstance.RequestActivatePrimaryInstance();
+            return;
+        }
+
+        singleInstance.StartActivationListener();
+
         WebApplication app;
 
         try
@@ -29,9 +38,12 @@ internal static class Program
             return;
         }
 
+        using var mainForm = new MainForm(app);
+        singleInstance.SetActivationAction(mainForm.ActivateFromAnotherInstance);
+
         try
         {
-            Application.Run(new MainForm(app));
+            Application.Run(mainForm);
         }
         finally
         {

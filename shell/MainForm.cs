@@ -6,6 +6,7 @@ using ReVueVRO.Models;
 using System.Diagnostics;
 using System.Drawing;
 using System.Globalization;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Windows.Forms;
@@ -20,6 +21,7 @@ public sealed class MainForm : Form
 
     private SettingsForm? _settingsForm;
     private bool _restarting;
+    private bool _pendingExternalActivation;
 
     // WebView2 uses fractional zoom factors, while appconfig stores whole percents.
     // These bounds keep both representations aligned across the shell and config page.
@@ -56,10 +58,51 @@ public sealed class MainForm : Form
 
         Load += async (_, _) => await InitializeWebViewAsync();
         HandleCreated += (_, _) => UpdateWindowBoundsForCurrentScreen(applyCurrentState: false);
+        HandleCreated += (_, _) =>
+        {
+            if (_pendingExternalActivation)
+            {
+                _pendingExternalActivation = false;
+                BeginInvoke(new Action(ActivateFromAnotherInstance));
+            }
+        };
         Shown += (_, _) => BeginInvoke(new Action(() => UpdateWindowBoundsForCurrentScreen(applyCurrentState: true)));
         LocationChanged += (_, _) => UpdateWindowBoundsForCurrentScreen(applyCurrentState: false);
         FormClosing += OnFormClosing;
         ShellCommands.RestartRequested += OnRestartRequested;
+    }
+
+    public void ActivateFromAnotherInstance()
+    {
+        if (IsDisposed)
+            return;
+
+        if (!IsHandleCreated)
+        {
+            _pendingExternalActivation = true;
+            return;
+        }
+
+        if (InvokeRequired)
+        {
+            BeginInvoke(new Action(ActivateFromAnotherInstance));
+            return;
+        }
+
+        _pendingExternalActivation = false;
+        var wasMinimized = WindowState == FormWindowState.Minimized;
+
+        if (wasMinimized)
+            WindowState = FormWindowState.Normal;
+
+        if (!Visible)
+            Show();
+
+        if (TopLevel)
+            BringWindowToFront(Handle, wasMinimized);
+
+        Activate();
+        BringToFront();
     }
 
     private void UpdateWindowBoundsForCurrentScreen(bool applyCurrentState)
@@ -197,6 +240,25 @@ public sealed class MainForm : Form
         catch
         {
         }
+    }
+
+    [DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+    private const int SwRestore = 9;
+
+    private static void BringWindowToFront(IntPtr handle, bool restoreWindow)
+    {
+        if (handle == IntPtr.Zero)
+            return;
+
+        if (restoreWindow)
+            ShowWindow(handle, SwRestore);
+
+        SetForegroundWindow(handle);
     }
 
     private void OnRestartRequested()
