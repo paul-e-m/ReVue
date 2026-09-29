@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ReVue-Remote Management</title><link rel="stylesheet" href="/config.css?v=20260929-3"></head>
+<body><main class="page">
+  <section id="loginView" class="card authCard"><h1>ReVue-Remote</h1><h2>Sign in</h2>
+    <form id="loginForm"><label>Email<input id="loginEmail" type="email" required autocomplete="username"></label>
+      <label>Password<input id="loginPassword" type="password" required autocomplete="current-password"></label>
+      <button type="submit">Sign in</button><p id="loginMessage" class="message"></p></form></section>
+
+  <section id="appView" class="hidden">
+    <header><div><h1>ReVue-Remote</h1><p id="signedInAs"></p></div><nav>
+      <button data-view="videos">Videos</button><button data-view="keys">Rink IDs</button><button data-view="profile">My account</button>
+      <button id="usersTab" data-view="users">Users</button><button id="logoutBtn" class="secondary">Sign out</button></nav></header>
+
+    <section id="videosView" class="panel"><div class="panelHeading"><h2>Video Library</h2><button id="deleteAllVideos" class="danger">Delete All</button></div>
+      <div class="toolbar"><label>Rink ID<select id="videoKey"></select></label>
+        <label class="filePicker">Choose videos<input id="videoFiles" type="file" accept=".mp4,.m4v,.mov,.mkv,.ts,.m2ts,video/mp4,video/quicktime,video/x-matroska,video/mp2t" multiple></label>
+        <button id="uploadBtn">Upload</button></div>
+      <div id="uploadProgressList" class="uploadProgressList"></div>
+      <p class="muted reorderHelp">Drag videos to change the order shown in ReVue VRO.</p>
+      <div id="videoList" class="list"></div></section>
+
+    <section id="keysView" class="panel hidden"><h2 id="keyListHeading">My Rink IDs</h2>
+      <form id="keyForm" class="toolbar"><label>New Rink ID<input id="newKey" maxlength="6" pattern="[A-Za-z0-9]{6}" placeholder="AB1234" required></label><button>Create Rink ID</button></form>
+      <div id="keyList" class="list"></div></section>
+
+    <section id="profileView" class="panel hidden"><h2>My account</h2>
+      <form id="profileForm" class="formGrid"><label>Email<input id="profileEmail" type="email" required></label><label>First name<input id="profileFirst"></label><label>Last name<input id="profileLast"></label><button>Save profile</button></form>
+      <h3>Change password</h3><form id="passwordForm" class="formGrid"><label>Current password<input id="currentPassword" type="password" required></label><label>New password<input id="newPassword" type="password" minlength="8" required></label><label>Confirm new password<input id="confirmPassword" type="password" minlength="8" required></label><button>Change password</button></form></section>
+
+    <section id="usersView" class="panel hidden"><h2>User management</h2>
+      <form id="createUserForm" class="formGrid"><label>Email<input id="userEmail" type="email" required></label><label>First name<input id="userFirst"></label><label>Last name<input id="userLast"></label><label>Type<select id="userRole"><option>Regular</option><option>Admin</option></select></label><label>Temporary password<input id="userPassword" type="password" minlength="8" required></label><button>Create user</button></form>
+      <div id="userList" class="list"></div></section>
+    <p id="appMessage" class="message"></p>
+  </section>
+</main>
+<dialog id="forcePassword"><form id="forcePasswordForm" method="dialog"><h2>Change your temporary password</h2><p>You must choose a new password before continuing.</p><label>Current password<input id="forceCurrent" type="password" required></label><label>New password<input id="forceNew" type="password" minlength="8" required></label><label>Confirm new password<input id="forceConfirm" type="password" minlength="8" required></label><button>Change password</button><p id="forceMessage" class="message"></p></form></dialog>
+<dialog id="renameVideoDialog"><form id="renameVideoForm"><h2>Rename video</h2><label>Video name<input id="renameVideoName" maxlength="180" required></label><div class="dialogActions"><button id="cancelRenameVideo" type="button" class="secondary">Cancel</button><button type="submit">Rename</button></div><p id="renameVideoMessage" class="message"></p></form></dialog>
+<script src="/config.js?v=20260929-3"></script></body></html>

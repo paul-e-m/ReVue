@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ReVue-Remote</title>
+    <link rel="stylesheet" href="styles.css?v=20260929-compact-header-menus" />
+</head>
+<body>
+    <main class="shell">
+        <header class="topBar">
+            <div class="brandBlock">
+                <div class="brand">ReVue-Remote</div>
+                <div id="playbackStatus" class="playbackStatus" data-i18n="waitingForRinkId">Waiting for a Rink ID.</div>
+            </div>
+
+            <form id="controls" class="headerControls" autocomplete="off">
+                <div id="reviewIndicator" class="reviewIndicator hidden" role="status" aria-live="polite">
+                    <span class="reviewIndicatorDot" aria-hidden="true"></span>
+                    <span id="reviewIndicatorText"></span>
+                </div>
+
+                <fieldset class="volumeControl controlGroup">
+                    <legend class="visuallyHidden" data-i18n="volume">Volume</legend>
+                    <span class="controlLabel" aria-hidden="true" data-i18n="volume">Volume</span>
+                    <div class="volumeInputRow">
+                        <label class="volumeSliderControl" title="Volume" data-i18n-title="volume">
+                            <input id="volume" class="volumeSlider" name="volume" type="range" min="0" max="100" value="100" step="1" aria-label="Video volume" data-i18n-aria="videoVolume" />
+                        </label>
+                        <label class="muteControl">
+                            <input id="mute" type="checkbox" />
+                            <span data-i18n="mute">Mute</span>
+                        </label>
+                    </div>
+                </fieldset>
+
+                <fieldset class="sessionControl controlGroup">
+                    <legend class="visuallyHidden" data-i18n="rinkId">Rink ID</legend>
+                    <span class="controlLabel" aria-hidden="true" data-i18n="rinkId">Rink ID</span>
+                    <input id="sessionCode" name="sessionCode" type="text" maxlength="6" pattern="[A-Za-z0-9]{6}" placeholder="AB1234" spellcheck="false" aria-label="Six-character Rink ID" data-i18n-aria="rinkIdInput" />
+                </fieldset>
+
+                <fieldset class="panelControl controlGroup">
+                    <legend class="visuallyHidden" data-i18n="role">Role</legend>
+                    <span class="controlLabel" aria-hidden="true" data-i18n="role">Role</span>
+                    <input id="panelType" name="panelType" type="hidden" value="technical" />
+                    <button id="panelTypeButton" class="panelTypeButton" type="button" aria-haspopup="listbox" aria-expanded="false">
+                        <span id="panelTypeLabel">Technical</span>
+                        <span class="panelChevron" aria-hidden="true">⌄</span>
+                    </button>
+                    <div id="panelTypeMenu" class="panelTypeMenu hidden" role="listbox" aria-label="Viewer panel type" data-i18n-aria="viewerRole">
+                        <button type="button" role="option" data-panel-type="judging" data-i18n="judge">Judge</button>
+                        <button type="button" role="option" data-panel-type="referee" data-i18n="referee">Referee</button>
+                        <button type="button" role="option" data-panel-type="technical" data-i18n="technicalPanel">Technical</button>
+                    </div>
+                </fieldset>
+
+                <div class="languageControl">
+                    <span class="languageLabel" data-i18n="language">Language</span>
+                    <input id="language" name="language" type="hidden" value="en" />
+                    <button id="languageButton" class="languageButton" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Language" data-i18n-aria="language">
+                        <span id="languageValueLabel">English</span>
+                        <span class="panelChevron" aria-hidden="true">⌄</span>
+                    </button>
+                    <div id="languageMenu" class="languageMenu hidden" role="listbox" aria-label="Language" data-i18n-aria="language">
+                        <button type="button" role="option" data-language="en">English</button>
+                        <button type="button" role="option" data-language="fr">Français</button>
+                    </div>
+                </div>
+            </form>
+        </header>
+
+        <section class="viewer" aria-label="Passive remote replay player" data-i18n-aria="remotePlayer">
+            <video id="video" playsinline preload="auto" disablepictureinpicture></video>
+            <div id="emptyState" class="emptyState waitingForVideo">
+                <img class="emptyStateWatermark" src="img/logo.png" alt="" aria-hidden="true" draggable="false" />
+                <span id="emptyStateMessage" class="emptyStateMessage" data-i18n="waitingForVideo">Stand by for video...</span>
+            </div>
+            <div id="judgingTransport" class="judgingTransport hidden">
+                <button id="refereeStopwatch" class="refereeStopwatch hidden" type="button" title="Set stopwatch zero" aria-label="Set stopwatch zero" aria-pressed="false" data-i18n-title="setStopwatchZero" data-i18n-aria="setStopwatchZero">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M9 2h6M12 2v3M17.5 6.5l1.7-1.7M12 7a7 7 0 1 1-7 7 7 7 0 0 1 7-7Z" />
+                        <path d="M12 10v4l2.6 1.6" />
+                    </svg>
+                </button>
+                <button id="judgingPlayPause" class="judgingPlayPause" type="button" data-i18n="play" data-i18n-aria="playVideo">Play</button>
+            </div>
+        </section>
+
+        <section id="timelineSection" class="timelineSection" aria-label="Video timeline" data-i18n-aria="videoTimeline">
+            <div id="timelineControlRow" class="timelineControlRow">
+                <div id="refereeTimer" class="refereeTimer hidden" aria-live="off"></div>
+                <div id="replayProgramTimeIndicator" class="replayProgramTimeIndicator hidden" aria-live="off">00:00:00</div>
+                <canvas id="timelineCanvas" class="timelineCanvas" role="slider" aria-label="Video playback position" data-i18n-aria="videoPlaybackPosition" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0" aria-disabled="true"></canvas>
+            </div>
+            <div class="timelineMetaRow">
+                <div id="networkIndicator" class="networkIndicator checking" role="status" aria-live="polite" aria-label="Checking server connectivity" data-i18n-aria="checkingServer">
+                    <svg class="wifiIcon" viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M2.5 8.7a14.5 14.5 0 0 1 19 0" />
+                        <path d="M5.8 12.1a9.6 9.6 0 0 1 12.4 0" />
+                        <path d="M9.1 15.5a4.7 4.7 0 0 1 5.8 0" />
+                        <circle cx="12" cy="19" r="1.2" />
+                    </svg>
+                    <span id="networkLatency" data-i18n="checking">CHECKING…</span>
+                </div>
+                <div id="videoFileName" class="videoFileName"></div>
+            </div>
+        </section>
+    </main>
+
+    <script src="app.js?v=20260929-technical-role-label"></script>
+</body>
+</html>

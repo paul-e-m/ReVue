@@ -6,5 +6,7 @@ artifacts/
 dist/
 *.csproj.user
 *.mp4
-data/demovideo.mp4
+.DS_Store
+ReVue-VRO/data/demovideo.mp4
+ReVue-Remote/data/
 GetSessionInfo_LegacyCSS.exe

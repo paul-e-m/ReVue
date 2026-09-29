@@ -8,7 +8,7 @@ ReVue VRO is a Windows desktop recording and replay tool for figure skating comp
 - `ffmpeg` / `ffprobe` for recording
 - MediaMTX for live RTSP relay into the browser UI
 
-The current app version is `v1.0.3`.
+The current app version is `v1.1.0`.
 
 ## What It Does
 
@@ -55,6 +55,20 @@ ReVue Judge client transfer behaviour is coordinated by the ReVue VRO backend:
 - ReVue VRO operator high-res replay requests never enter the ReVue Judge transfer path.
 - ReVue Judge low-res on-demand chunk requests enter the ReVue Judge transfer path.
 
+## ReVue Remote
+
+ReVue VRO supports three video source modes:
+
+- `RTSP`: the normal live encoder feed
+- `Demo`: the local `demovideo.mp4` training source
+- `Remote`: an MP4 hosted by the separate ReVue-Remote web app
+
+Remote mode is intended for hosted, synchronized viewing. Configure the ReVue-Remote base URL and a valid six-character alphanumeric Rink ID such as `AB1234` in ReVue VRO Settings. Use the cloud service's `/config` page to upload MP4, M4V, MOV, MKV, TS, or M2TS files into that Rink ID, then download and select the active source video from ReVue VRO's main window. Uploaded files must already contain H.264/yuv420p video and AAC audio (or no audio); ReVue-Remote remuxes accepted files to browser-ready MP4 without transcoding.
+
+ReVue VRO downloads the selected hosted MP4 into its local Remote video cache before enabling playback. By default, cached videos are deleted after 16 hours and the cache retains at most 50 videos; both values can be changed beside the other Remote source settings. When recording starts, ReVue VRO plays the local copy while ReVue-Remote starts the matching hosted file for browser viewers. When recording stops, the VRO replay transport publishes forward play, pause, seek, and playback-speed changes to those viewers. Reverse playback is intentionally not reproduced by the passive player.
+
+The ReVue-Remote project is under `ReVue-Remote/`. Its browser page has two viewer inputs: the Rink ID and volume. See [ReVue-Remote/README.md](ReVue-Remote/README.md) for hosting and security configuration.
+
 ## Saved Video Export
 
 When `SaveVideos` is enabled in `appconfig.json`, completed recordings are exported from the low-res replay file under:
@@ -73,16 +87,16 @@ Folder and file names are built from `SessionInfo.json`.
 
 ## Architecture
 
-- [shell/Program.cs] starts the local web server and native shell.
-- [shell/MainForm.cs] hosts the main operator UI in WebView2.
-- [AppServer.cs] serves static files and the local HTTP API.
-- [ReVueVRO.csproj] builds the `ReVue-VRO.exe` executable.
+- [ReVue-VRO/shell/Program.cs] starts the local web server and native shell.
+- [ReVue-VRO/shell/MainForm.cs] hosts the main operator UI in WebView2.
+- [ReVue-VRO/AppServer.cs] serves static files and the local HTTP API.
+- [ReVue-VRO/ReVueVRO.csproj] builds the `ReVue-VRO.exe` executable.
 - [ReVue-Judge/ReVue-Judge.csproj] builds the separate `ReVue-Judge.exe` executable.
-- [Services/RecorderManager.cs] manages recording, replay-file generation, and saved-video export.
-- [Services/MediaMtxManager.cs] runs MediaMTX for RTSP relay.
-- [Services/SessionManager.cs] owns in-memory session and clip state.
-- [wwwroot/index.html] is the main operator UI.
-- [wwwroot/config.html] is the settings window.
+- [ReVue-VRO/Services/RecorderManager.cs] manages recording, replay-file generation, and saved-video export.
+- [ReVue-VRO/Services/MediaMtxManager.cs] runs MediaMTX for RTSP relay.
+- [ReVue-VRO/Services/SessionManager.cs] owns in-memory session and clip state.
+- [ReVue-VRO/wwwroot/index.html] is the main operator UI.
+- [ReVue-VRO/wwwroot/config.html] is the settings window.
 - [ReVue-Judge/wwwroot/ReVue-Judge.html] is the ReVue Judge UI.
 
 The local server listens on:
@@ -115,9 +129,9 @@ To compile the app, you need:
 - Windows
 - .NET 10 SDK
 - WebView2 Runtime
-- `tools/ffmpeg.exe`
-- `tools/ffprobe.exe`
-- `tools/mediamtx.exe`
+- `ReVue-VRO/tools/ffmpeg.exe`
+- `ReVue-VRO/tools/ffprobe.exe`
+- `ReVue-VRO/tools/mediamtx.exe`
 
 Optional CSS helper executables should be placed beside `ReVue-VRO.exe`:
 
@@ -271,21 +285,21 @@ Unknown extra properties are ignored by the current app.
 From the project root:
 
 ```powershell
-dotnet run
+dotnet run --project ReVue-VRO\ReVueVRO.csproj
 ```
 
-During development, `wwwroot\`, `data\`, and `tools\` are copied to the output folder with `PreserveNewest`.
+During development, `ReVue-VRO\wwwroot\`, `ReVue-VRO\data\`, and `ReVue-VRO\tools\` are copied to the output folder with `PreserveNewest`.
 
 ## Publishing
 
 ```powershell
-dotnet publish -c Release -r win-x64 --self-contained true /p:PublishSingleFile=true /p:IncludeNativeLibrariesForSelfExtract=true
+dotnet publish ReVue-VRO\ReVueVRO.csproj -c Release -r win-x64 --self-contained true /p:PublishSingleFile=true /p:IncludeNativeLibrariesForSelfExtract=true
 ```
 
 Published output is created under:
 
 ```text
-bin\Release\net10.0-windows\win-x64\publish\
+ReVue-VRO\bin\Release\net10.0-windows\win-x64\publish\
 ```
 
 To sign the published app binaries and the setup installers in `dist\`, run:
@@ -298,14 +312,14 @@ That script signs and verifies `ReVue-VRO.exe`, `ReVue-Judge.exe`, `dist\ReVue-V
 
 ## Repository Layout
 
-- `AppServer.cs`
-- `AppPaths.cs`
-- `Models\`
-- `Services\`
-- `shell\`
-- `wwwroot\`
-- `data\`
-- `tools\`
+- `ReVue-VRO\AppServer.cs`
+- `ReVue-VRO\AppPaths.cs`
+- `ReVue-VRO\Models\`
+- `ReVue-VRO\Services\`
+- `ReVue-VRO\shell\`
+- `ReVue-VRO\wwwroot\`
+- `ReVue-VRO\data\`
+- `ReVue-VRO\tools\`
 - `API-manual.md`
 
 ## API Reference

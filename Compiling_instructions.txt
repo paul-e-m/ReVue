@@ -6,15 +6,20 @@ Compiling instructions:
 
 REVUE VRO:
 cd "P:\pCloud Sync\Data Specialist\Current ElementReview-dev"
-dotnet publish .\ReVueVRO.csproj -c Release -r win-x64 --self-contained true /p:PublishSingleFile=true /p:IncludeNativeLibrariesForSelfExtract=true
+dotnet publish .\ReVue-VRO\ReVueVRO.csproj -c Release -r win-x64 --self-contained true /p:PublishSingleFile=true /p:IncludeNativeLibrariesForSelfExtract=true
 
 REVUE JUDGE:
 cd "P:\pCloud Sync\Data Specialist\Current ElementReview-dev"
 dotnet publish .\ReVue-Judge\ReVue-Judge.csproj -c Release -r win-x64 --self-contained true /p:PublishSingleFile=true /p:IncludeNativeLibrariesForSelfExtract=true
 
-The ReVue VRO executable binary will be located in \bin\Release\net10.0-windows\win-x64\publish\
-The ReVue Judge executable binary will be located in \ReVue-Judge\bin\Release\net10.0-windows\win-x64\publish\
+REVUE REMOTE (framework-dependent web deployment):
+cd "P:\pCloud Sync\Coding\ReVue\ReVue-dev"
+dotnet publish .\ReVue-Remote\ReVue-Remote.csproj -c Release -o .\artifacts\ReVue-Remote
 
-After publishing, run `.\sign-artifacts.ps1` from the project root to sign and verify the published `ReVue-VRO.exe`, `ReVue-Judge.exe`, and the VRO installer in `dist\` if it has been created.
+The ReVue VRO executable binary will be located in \ReVue-VRO\bin\Release\net10.0-windows\win-x64\publish\
+The ReVue Judge executable binary will be located in \ReVue-Judge\bin\Release\net10.0-windows\win-x64\publish\
+The ReVue Remote web deployment will be located in \artifacts\ReVue-Remote\
+
+After publishing, run `.\sign-artifacts.ps1` from the project root to sign and verify the published `ReVue-VRO.exe`, `ReVue-Judge.exe`, and both setup installers in `dist\` if they have been created.
 
 Note: Both ReVue VRO and ReVue Judge use WebView2. Microsoft says the Evergreen WebView2 Runtime is preinstalled on Windows 11 and installed on most eligible Windows 10 devices, but the runtime should still be included or installed for event laptops to cover machines where it is missing. Use the Microsoft Edge WebView2 Evergreen Runtime installer.

@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ReVue Remote Source</title>
+    <style>
+        html, body {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            overflow: hidden;
+            background: #000;
+            color: #fff;
+            font-family: "Segoe UI", Arial, sans-serif;
+        }
+
+        video {
+            width: 100%;
+            height: 100%;
+            display: block;
+            object-fit: contain;
+            object-position: top left;
+            background: #000;
+        }
+
+        #message {
+            position: fixed;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 28px;
+            text-align: center;
+            font-size: 18px;
+            font-weight: 650;
+            line-height: 1.45;
+        }
+    </style>
+</head>
+<body>
+    <video id="remoteVideo" preload="auto" muted loop playsinline disablepictureinpicture></video>
+    <div id="message"></div>
+
+    <script>
+        const params = new URLSearchParams(location.search);
+        const source = params.get("src") || "";
+        const configuredError = params.get("error") || "";
+        const video = document.getElementById("remoteVideo");
+        const message = document.getElementById("message");
+
+        function showError(text) {
+            video.style.display = "none";
+            message.textContent = text || "Remote video unavailable.";
+            message.style.display = "flex";
+        }
+
+        if (configuredError) {
+            showError(configuredError);
+        } else if (!source) {
+            showError("No Remote video has been selected in ReVue VRO Settings.");
+        } else {
+            video.src = source;
+            video.addEventListener("error", () => {
+                showError("The selected Remote video could not be loaded.");
+            });
+            // Keep the selected source on its opening frame until the operator
+            // starts recording. The parent ReVue VRO window controls playback.
+            video.load();
+            video.pause();
+        }
+    </script>
+</body>
+</html>

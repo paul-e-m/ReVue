@@ -1,0 +1,401 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ReVue VRO</title>
+    <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+    <!--
+      Main operator UI for ReVue VRO.
+      The page contains both record-mode and replay-mode DOM at once; app.js
+      switches visibility, reuses shared widgets, and moves a few controls
+      between host containers depending on the active mode.
+    -->
+    <main class="container">
+
+        <!-- Primary two-column workspace: element list on the left, media area on the right. -->
+        <div class="topRow">
+
+            <!--
+              Left rail: fixed 1-15 element slots.
+              In replay mode each populated slot becomes a selectable clip
+              button; in record mode empty slots still preserve the layout.
+            -->
+            <div id="leftControls" class="leftControls">
+                <div id="autoplaySelectedClipRow" class="autoplaySelectedClipRow">
+                    <span id="autoplaySelectedClipLabel" class="editToggleLabel">Autoplay Selected Clip</span>
+                    <label class="editToggleSwitch">
+                        <input type="checkbox" id="autoplaySelectedClipToggle" aria-label="Autoplay Selected Clip" />
+                        <span class="editToggleSlider"></span>
+                    </label>
+                </div>
+                <div id="clipList" class="clipList" aria-label="Elements"></div>
+                <div id="clipToggleRailHost" class="clipToggleRailHost">
+                    <div id="buttonCanvasContainer" class="buttonCanvasContainer">
+                        <button id="clipToggleBtn" class="clipActionBtn clipToggleCanvasBtn clipStart" type="button">
+                            <span class="clipToggleCanvasVisual">
+                                <img id="clipToggleIcon" class="clipToggleCanvasIcon" src="/img/buttons/start_clip_icon.png" alt="" draggable="false" />
+                                <span id="clipToggleText" class="clipToggleCanvasText">START CLIP</span>
+                            </span>
+                        </button>
+                        <button id="undoClipBtn" class="clipActionBtn clipHistoryCanvasBtn undoBtn" type="button">
+                            <span id="undoClipText" class="clipHistoryCanvasText">UNDO</span>
+                        </button>
+                        <button id="redoClipBtn" class="clipActionBtn clipHistoryCanvasBtn redoBtn" type="button">
+                            <span id="redoClipText" class="clipHistoryCanvasText">REDO</span>
+                        </button>
+                        <div id="clipTimerCard" class="recordTimerCard clipTimerOverlay" aria-hidden="true">
+                            <span id="clipTime" class="recordTimerValue">00:00.00</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right side hosts the live iframe or replay video plus side controls. -->
+            <div class="rightContent">
+
+                <!--
+                  Record mode keeps the live source on screen and places the
+                  recording controls in a four-column action row above the video.
+                -->
+                <section id="recordMode">
+                    <div class="modeRow" id="recordTopRow">
+                        <div class="videoCol">
+                            <div class="liveWrap" id="liveWrap">
+                                <div class="videoStage">
+                                    <div id="recordSessionInfo" class="sessionInfoOverlay hidden">
+                                        <div class="sessionInfoLeftGroup">
+                                            <div id="recordCategorySelectGroup" class="sessionInfoSelectGroup hidden">
+                                                <select id="recordDisciplineSelect" class="sessionInfoSelect" aria-label="Discipline"></select>
+                                                <select id="recordCategoryNameSelect" class="sessionInfoSelect" aria-label="Category name"></select>
+                                                <select id="recordCategorySelect" class="sessionInfoSelect" aria-label="Category group and labels"></select>
+                                                <select id="recordSegmentSelect" class="sessionInfoSelect" aria-label="Segment"></select>
+                                            </div>
+                                            <span id="recordSessionInfoText" class="sessionInfoText"></span>
+                                        </div>
+                                        <span class="sessionInfoStatus">
+                                            <span class="sessionInfoStatusItem">
+                                                <span id="recordSessionEncoderLabel" class="sessionInfoStatusLabel">Encoder</span>
+                                                <span id="recordSessionEncoderDot" class="replayPingDot idle"></span>
+                                            </span>
+                                            <span class="sessionInfoStatusItem">
+                                                <span class="sessionInfoStatusLabel">CSS</span>
+                                                <span id="recordSessionCssDot" class="replayPingDot idle"></span>
+                                            </span>
+                                            <button id="recordRefreshBtn" class="sessionInfoRefreshBtn" type="button" title="Refresh" aria-label="Refresh">
+                                                <img class="sessionInfoRefreshIcon" src="/img/buttons/refresh.png" alt="" draggable="false" />
+                                            </button>
+                                            <button id="recordSettingsBtn" class="sessionInfoSettingsBtn" type="button" title="Settings" aria-label="Settings">
+                                                <img class="sessionInfoSettingsIcon" src="/img/buttons/settings.png" alt="" draggable="false" />
+                                            </button>
+                                            <button id="recordLogoBtn" class="sessionInfoLogoBtn" type="button" title="ReVue VRO" aria-label="ReVue VRO">
+                                                <img class="sessionInfoLogoIcon" src="/img/logo.png" alt="" draggable="false" />
+                                            </button>
+                                        </span>
+                                    </div>
+
+                                    <div class="recordActionBar">
+                                        <div id="recordActionRow" class="recordActionRow">
+                                            <div class="recordActionCol recordActionColMain">
+                                                <div id="mainBtnHostRecord">
+                                                    <button id="mainBtn" class="mainBtn btnGreen btnImg">START<br>RECORDING</button>
+                                                </div>
+                                            </div>
+
+                                            <div class="recordActionCluster">
+                                                <div class="recordActionCol recordActionColProgramStart">
+                                                    <button id="recordProgramStartBtn" class="programStartBtn mainBtn btnGreen btnImg" type="button">START<br>TIMER</button>
+                                                </div>
+
+                                                <div id="halfwayTimeCol" class="recordActionCol recordActionColHalfwayTime hidden">
+                                                    <div id="halfwayTimeCard" class="recordTimerCard" aria-hidden="true">
+                                                        <span id="halfwayTimeValue" class="halfwayTimeValue"></span>
+                                                    </div>
+                                                </div>
+
+                                                <div class="recordActionCol recordActionColTimer">
+                                                    <div id="recordTimerCard" class="recordTimerCard" aria-hidden="true">
+                                                        <span id="recordTimerPrefix" class="recordTimerLabel">REC:</span>
+                                                        <span id="recordTimerValue" class="recordTimerValue">00:00:00</span>
+                                                        <span class="recLamp" id="recLamp">&#9679;</span>
+                                                    </div>
+                                                </div>
+
+                                                <div class="recordActionCol recordActionColTimer">
+                                                    <div id="programTimerCard" class="recordTimerCard" aria-hidden="true">
+                                                        <span id="programTimerPrefix" class="recordTimerLabel">PROG:</span>
+                                                        <span id="programTimerDisplay" class="recordTimerValue">00:00.00</span>
+                                                    </div>
+                                                </div>
+
+                                            </div>
+
+                                            <div class="recordActionSpacer" aria-hidden="true"></div>
+
+                                            <div class="recordActionCol recordActionColLanguage">
+                                                <div id="recordRemoteVideoCol" class="remoteVideoSelectCol hidden">
+                                                    <button id="recordRemoteVideoSelect" type="button" class="remoteVideoSelectButton" aria-label="Select Video">Select Video</button>
+                                                </div>
+                                                <div id="recordManualHalfwayCol" class="manualHalfwayCol hidden">
+                                                    <span id="recordManualHalfwayTitle" class="manualHalfwayTitle">Halfway</span>
+                                                    <select id="recordManualHalfwaySelect" class="manualHalfwaySelect" aria-label="Halfway time">
+                                                        <option value="None">None</option>
+                                                        <option value="SeniorSP">Senior SP (1:20)</option>
+                                                        <option value="SeniorFS">Senior FS (2:00)</option>
+                                                        <option value="JuniorSP">Junior SP (1:20)</option>
+                                                        <option value="JuniorFS">Junior FS (1:45)</option>
+                                                    </select>
+                                                </div>
+                                                <select id="recordLanguageSelect" class="topBarLanguageSelect" aria-label="Language">
+                                                    <option value="en">English</option>
+                                                    <option value="fr">Français</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Live source is either RTSP-backed content or the demo player page. -->
+                                    <iframe id="liveFrame"
+                                            title="Live"
+                                            scrolling="no"
+                                            allow="autoplay"
+                                            ></iframe>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="recordShortcutHint" class="shortcutHint shortcutHintBottom">Hold TAB key to view shortcuts</div>
+                </section>
+
+                <!--
+                  Replay mode replaces the live iframe with the high-res replay
+                  video while keeping the overall page shell unchanged.
+                -->
+                <section id="replayMode" class="hidden">
+                    <div class="modeRow" id="replayTopRow">
+                        <div class="videoCol">
+                            <!-- app-replay.js wraps and controls this video for transport, zoom, and clip playback. -->
+                            <div id="replayVideoWrap" class="replayVideoWrap">
+                                <div id="replaySessionInfo" class="sessionInfoOverlay hidden">
+                                    <div class="sessionInfoLeftGroup">
+                                        <div id="replayCategorySelectGroup" class="sessionInfoSelectGroup hidden">
+                                            <select id="replayDisciplineSelect" class="sessionInfoSelect" aria-label="Discipline"></select>
+                                            <select id="replayCategoryNameSelect" class="sessionInfoSelect" aria-label="Category name"></select>
+                                            <select id="replayCategorySelect" class="sessionInfoSelect" aria-label="Category group and labels"></select>
+                                            <select id="replaySegmentSelect" class="sessionInfoSelect" aria-label="Segment"></select>
+                                        </div>
+                                        <span id="replaySessionInfoText" class="sessionInfoText"></span>
+                                    </div>
+                                    <span class="sessionInfoStatus">
+                                        <span class="sessionInfoStatusItem">
+                                                <span id="replaySessionEncoderLabel" class="sessionInfoStatusLabel">Encoder</span>
+                                            <span id="replaySessionEncoderDot" class="replayPingDot idle"></span>
+                                        </span>
+                                        <span class="sessionInfoStatusItem">
+                                            <span class="sessionInfoStatusLabel">CSS</span>
+                                            <span id="replaySessionCssDot" class="replayPingDot idle"></span>
+                                        </span>
+                                        <button id="replayRefreshBtn" class="sessionInfoRefreshBtn" type="button" title="Refresh" aria-label="Refresh">
+                                            <img class="sessionInfoRefreshIcon" src="/img/buttons/refresh.png" alt="" draggable="false" />
+                                        </button>
+                                        <button id="replaySettingsBtn" class="sessionInfoSettingsBtn" type="button" title="Settings" aria-label="Settings">
+                                            <img class="sessionInfoSettingsIcon" src="/img/buttons/settings.png" alt="" draggable="false" />
+                                        </button>
+                                        <button id="replayLogoBtn" class="sessionInfoLogoBtn" type="button" title="ReVue VRO" aria-label="ReVue VRO">
+                                            <img class="sessionInfoLogoIcon" src="/img/logo.png" alt="" draggable="false" />
+                                        </button>
+                                    </span>
+                                </div>
+                                <div class="recordActionBar replayActionBar">
+                                    <div id="replayActionRow" class="replayActionRow">
+                                        <div class="recordActionCol replayActionColMain">
+                                            <div id="mainBtnHostReplay"></div>
+                                        </div>
+
+                                        <div class="replayActionCluster">
+                                            <div class="recordActionCol recordActionColProgramStart replayProgramStartCol">
+                                                <button id="replayProgramStartBtn" class="programStartBtn mainBtn btnGreen btnImg" type="button">START<br>TIMER</button>
+                                            </div>
+
+                                            <div class="recordActionCol recordActionColProgramStart replayJumpHalfwayCol">
+                                                <button id="replayJumpToHalfwayBtn" class="programStartBtn mainBtn btnGreen btnImg" type="button" title="Jump to Halfway" aria-label="Jump to Halfway"></button>
+                                            </div>
+
+                                            <div id="replayHalfwayTimeCol" class="recordActionCol recordActionColHalfwayTime hidden">
+                                                <div id="replayHalfwayTimeCard" class="recordTimerCard" aria-hidden="true">
+                                                    <span id="replayHalfwayTimeValue" class="halfwayTimeValue"></span>
+                                                </div>
+                                            </div>
+
+                                            <div class="recordActionCol recordActionColTimer replayCountCol">
+                                                <div class="recordTimerCard replayCountCard" aria-label="Replay elements">
+                                                    <span id="replayElementsLabel" class="recordTimerLabel">Elements:</span>
+                                                    <span id="replayElementsValue" class="recordTimerValue">0</span>
+                                                </div>
+                                            </div>
+
+                                            <div class="recordActionCol recordActionColTimer replayCountCol">
+                                                <div class="recordTimerCard replayCountCard" aria-label="Replay reviews">
+                                                    <span id="replayReviewsLabel" class="recordTimerLabel">Reviews:</span>
+                                                    <span id="replayReviewsValue" class="recordTimerValue">0</span>
+                                                </div>
+                                            </div>
+
+                                            <div class="recordActionCol replayReviewCol" aria-label="Review timer">
+                                                <div id="reviewTimer" class="reviewTimer">REVIEW: 00:00</div>
+                                            </div>
+
+                                        </div>
+
+                                        <div class="recordActionSpacer" aria-hidden="true"></div>
+
+                                        <div class="recordActionCol recordActionColLanguage">
+                                            <div id="replayManualHalfwayCol" class="manualHalfwayCol hidden">
+                                                <span id="replayManualHalfwayTitle" class="manualHalfwayTitle">Halfway</span>
+                                                <select id="replayManualHalfwaySelect" class="manualHalfwaySelect" aria-label="Halfway time">
+                                                    <option value="None">None</option>
+                                                    <option value="SeniorSP">Senior SP (1:20)</option>
+                                                    <option value="SeniorFS">Senior FS (2:00)</option>
+                                                    <option value="JuniorSP">Junior SP (1:20)</option>
+                                                    <option value="JuniorFS">Junior FS (1:45)</option>
+                                                </select>
+                                            </div>
+                                            <select id="replayLanguageSelect" class="topBarLanguageSelect" aria-label="Language">
+                                                <option value="en">English</option>
+                                                <option value="fr">Français</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                                <video id="replayVideo"
+                                       class="replayVideo"
+                                       playsinline
+                                       preload="auto"
+                                       disablepictureinpicture
+                                      
+                                       disableremoteplayback></video>
+                                <div id="replayZoomHint" class="replayZoomHint hidden">Double click video again to exit zoom</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="replayShortcutHint" class="shortcutHint shortcutHintBottom">Hold TAB key to view shortcuts</div>
+                </section>
+
+            </div>
+        </div>
+
+        <!-- Shared full-width timeline used in both modes. -->
+        <div class="recordScrubRow" id="timelineRow">
+            <div class="scrubOverlay" id="timelineOverlay">
+                <canvas id="recordCanvas"></canvas>
+                <div id="replayProgramTimeIndicator" class="replayProgramTimeIndicator hidden">00:00:00</div>
+                <!-- The range input is replay-only, but sits over the shared timeline canvas. -->
+                <input id="replayScrub" class="scrubRange hidden" type="range" min="0" max="10000" value="0" />
+            </div>
+        </div>
+
+        <!-- Replay transport row: edit tools, centered playback controls, and manual loop controls. -->
+        <div class="replayControlsRow hidden" id="replayControlsRow">
+            <div class="replayControlsInner">
+                <!-- Left group holds the replay edit controls. -->
+                <div class="replayLeftGroup">
+                    <!-- These actions are enabled only when replay edit mode is turned on. -->
+                    <div class="editButtons" id="editButtons" aria-label="Edit controls">
+                        <button id="trimInBtn" class="editBtn" type="button" title="Trim In" aria-label="Trim In">
+                            <img src="/img/buttons/trim_in.png" width="52" height="52" alt="" draggable="false">
+                        </button>
+
+                        <button id="trimOutBtn" class="editBtn" type="button" title="Trim Out" aria-label="Trim Out">
+                            <img src="/img/buttons/trim_out.png" width="52" height="52" alt="" draggable="false">
+                        </button>
+
+                        <!-- Visual spacer between trim and structural clip edits. -->
+                        <div class="speedDivider" aria-hidden="true"></div>
+
+                        <button id="splitBtn" class="editBtn" type="button" title="Split" aria-label="Split">
+                            <img src="/img/buttons/split.png" width="52" height="52" alt="" draggable="false">
+                        </button>
+
+                        <button id="insertBtn" class="editBtn" type="button" title="Insert" aria-label="Insert">
+                            <img src="/img/buttons/insert.png" width="52" height="52" alt="" draggable="false">
+                        </button>
+
+                        <button id="deleteBtn" class="editBtn" type="button" title="Delete" aria-label="Delete">
+                            <img src="/img/buttons/delete.png" width="52" height="52" alt="" draggable="false">
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Center group is kept visually centered even when left/right groups change width. -->
+                <div class="replayButtons" id="replayButtons">
+                </div>
+
+                <!-- Right group contains the custom loop in/out controls. -->
+                <div class="replayRightGroup">
+                    <div class="loopButtons" aria-label="Loop controls">
+                        <button id="loopInBtn" class="loopBtn" type="button" title="Loop In"></button>
+                        <button id="loopOutBtn" class="loopBtn" type="button" title="Loop Out"></button>
+                        <button id="loopClearBtn" class="loopBtn" type="button" title="Clear Loop"></button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Generic confirmation modal used for destructive or session-reset actions. -->
+    <div id="confirmModal" class="modal hidden" role="dialog" aria-modal="true">
+        <div class="modalCard">
+            <div id="confirmText" class="modalText">Are you sure?</div>
+            <div class="modalButtons">
+                <button id="confirmYes" class="modalBtn modalBtnConfirm">ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã¢â‚¬Å“ Yes</button>
+                <button id="confirmCancel" class="modalBtn modalBtnCancel">ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¢ Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Operator-friendly API and recording error dialog. -->
+    <div id="errorModal" class="modal hidden" role="alertdialog" aria-modal="true" aria-labelledby="errorTitle" aria-describedby="errorText">
+        <div class="modalCard errorModalCard">
+            <div id="errorTitle" class="modalTitle">Recording could not start</div>
+            <div id="errorText" class="modalText errorModalText">An unexpected error occurred.</div>
+            <div id="errorCode" class="modalErrorCode hidden"></div>
+            <div class="modalButtons">
+                <button id="errorDismiss" class="modalBtn modalBtnConfirm" type="button">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="remoteVideoModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="remoteVideoModalTitle">
+        <div class="modalCard remoteVideoModalCard">
+            <div class="remoteVideoModalHeader"><div id="remoteVideoModalTitle" class="modalTitle">Available Video Recordings</div><button id="remoteVideoClose" type="button" class="remoteVideoCloseButton">Close</button></div>
+            <div id="remoteVideoLibraryList" class="remoteVideoLibraryList"></div>
+        </div>
+    </div>
+
+    <!-- Hold Tab to show the active-mode keyboard shortcuts without moving focus. -->
+    <div id="shortcutOverlay" class="shortcutOverlay hidden" aria-hidden="true">
+        <div class="shortcutCard">
+            <div id="shortcutTitle" class="shortcutTitle">Keyboard Shortcuts</div>
+            <div id="shortcutModeLabel" class="shortcutModeLabel">Recording Mode</div>
+            <div id="shortcutList" class="shortcutList"></div>
+            <div class="shortcutFooter">
+                <div id="shortcutVersion" class="shortcutVersion">v1.1.0</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="brandOverlay" class="brandOverlay hidden" aria-hidden="true">
+        <img class="brandOverlayLogo" src="/img/logo.png" alt="ReVue VRO" draggable="false" />
+        <div class="brandOverlayMessage">CLICK ANYWHERE TO RETURN TO REVUE VRO / CLIQUEZ N'IMPORTE OÙ POUR REVENIR À REVUE VRO</div>
+    </div>
+
+    <script src="index-i18n.js?v=20260929-remote-filename"></script>
+    <script type="module" src="app.js?v=20260929-remote-cache-delay"></script>
+</body>
+</html>
