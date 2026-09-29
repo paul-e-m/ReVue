@@ -98,18 +98,21 @@ public class AppConfig
     public string RemoteVideoId { get; set; } = "";
 
     [JsonPropertyOrder(26)]
-    public string RemoteVideoFolder { get; set; } = "";
+    public DateTimeOffset? RemoteVideoSelectedAtUtc { get; set; }
 
     [JsonPropertyOrder(27)]
-    public string RemoteVideoLocalPath { get; set; } = "";
+    public string RemoteVideoFolder { get; set; } = "";
 
     [JsonPropertyOrder(28)]
-    public List<RemoteVideoMapping> RemoteVideoMappings { get; set; } = [];
+    public string RemoteVideoLocalPath { get; set; } = "";
 
     [JsonPropertyOrder(29)]
-    public int RemoteVideoCacheMaximumFiles { get; set; } = 50;
+    public List<RemoteVideoMapping> RemoteVideoMappings { get; set; } = [];
 
     [JsonPropertyOrder(30)]
+    public int RemoteVideoCacheMaximumFiles { get; set; } = 50;
+
+    [JsonPropertyOrder(31)]
     public int RemoteVideoCacheExpirationHours { get; set; } = 16;
 }
 

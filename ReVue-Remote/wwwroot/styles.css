@@ -146,13 +146,13 @@ header {
 .panelControl {
     position: relative;
     z-index: 30;
-    width: 162px;
+    width: max-content;
     margin-left: 8px;
-    flex: 0 0 162px;
+    flex: 0 0 auto;
 }
 
 .panelTypeButton {
-    width: 100%;
+    width: max-content;
     min-height: 34px;
     display: flex;
     align-items: center;

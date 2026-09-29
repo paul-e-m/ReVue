@@ -430,17 +430,27 @@ export class ReVueVROApp {
         return Number(this.remoteVideoRecordEnableAtMs || 0) > Date.now();
     }
 
-    startRemoteVideoCacheDelay() {
+    startRemoteVideoCacheDelay(selectedAtUtc = this.appConfig?.RemoteVideoSelectedAtUtc) {
         if (this.remoteVideoRecordEnableTimer !== null) {
             clearTimeout(this.remoteVideoRecordEnableTimer);
         }
 
-        this.remoteVideoRecordEnableAtMs = Date.now() + 3000;
+        const selectedAtMs = Date.parse(String(selectedAtUtc || ""));
+        const enableAtMs = Number.isFinite(selectedAtMs)
+            ? selectedAtMs + 2500
+            : Date.now() + 2500;
+        const remainingMs = Math.max(0, enableAtMs - Date.now());
+        this.remoteVideoRecordEnableAtMs = remainingMs > 0 ? enableAtMs : 0;
+        if (remainingMs === 0) {
+            this.remoteVideoRecordEnableTimer = null;
+            this.syncRemoteVideoSelector();
+            return;
+        }
         this.remoteVideoRecordEnableTimer = window.setTimeout(() => {
             this.remoteVideoRecordEnableTimer = null;
             this.remoteVideoRecordEnableAtMs = 0;
             this.syncRemoteVideoSelector();
-        }, 3000);
+        }, remainingMs);
         this.syncRemoteVideoSelector();
     }
 
@@ -451,9 +461,9 @@ export class ReVueVROApp {
         try {
             const saved = await apiPost(`/api/remote/library/${encodeURIComponent(videoId)}/select`, {});
             this.appConfig = saved;
+            this.startRemoteVideoCacheDelay(saved.RemoteVideoSelectedAtUtc);
             await this.refreshLiveUrl();
             await this.refreshRemoteVideoSelector();
-            this.startRemoteVideoCacheDelay();
             this.closeRemoteVideoLibrary();
         } catch (err) {
             throw err;

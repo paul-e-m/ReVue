@@ -77,6 +77,7 @@ public static class AppServer
             PropertyNameCaseInsensitive = true,
             WriteIndented = true
         };
+        const double RemoteVideoRecordDelaySeconds = 2.5;
 
         OperatorAuthToken = GenerateOperatorAuthToken();
 
@@ -956,6 +957,12 @@ public static class AppServer
         {
             var previous = LoadConfig();
             cfg = NormalizeConfig(MergeConfig(previous, cfg));
+            var remoteVideoChanged = !string.Equals(previous.RemoteVideoId, cfg.RemoteVideoId, StringComparison.OrdinalIgnoreCase);
+            cfg.RemoteVideoSelectedAtUtc = remoteVideoChanged && !string.IsNullOrWhiteSpace(cfg.RemoteVideoId)
+                ? DateTimeOffset.UtcNow
+                : remoteVideoChanged
+                    ? null
+                    : previous.RemoteVideoSelectedAtUtc;
             if (string.Equals(cfg.VideoSourceMode, "Remote", StringComparison.OrdinalIgnoreCase))
             {
                 await remote.ValidateSessionAsync(cfg.RemoteHostUrl, cfg.RemoteSessionCode, http.RequestAborted);
@@ -964,6 +971,7 @@ public static class AppServer
                 {
                     cfg.RemoteVideoId = "";
                     cfg.RemoteVideoLocalPath = "";
+                    cfg.RemoteVideoSelectedAtUtc = null;
                 }
             }
             SaveConfig(cfg);
@@ -1046,7 +1054,10 @@ public static class AppServer
             var cfg = LoadConfig();
             var path = AppPaths.GetRemoteVideoCachePath(cfg.RemoteSessionCode, videoId);
             if (!File.Exists(path)) return Results.BadRequest("Download the complete video before selecting it.");
-            cfg.RemoteVideoId = videoId; cfg.RemoteVideoLocalPath = path; SaveConfig(cfg);
+            cfg.RemoteVideoId = videoId;
+            cfg.RemoteVideoLocalPath = path;
+            cfg.RemoteVideoSelectedAtUtc = DateTimeOffset.UtcNow;
+            SaveConfig(cfg);
             return Results.Json(cfg, jsonOpts);
         });
 
@@ -1089,6 +1100,7 @@ public static class AppServer
 
             cfg.RemoteVideoLocalPath = selected.LocalPath;
             cfg.RemoteVideoId = selected.RemoteVideoId;
+            cfg.RemoteVideoSelectedAtUtc = DateTimeOffset.UtcNow;
             SaveConfig(cfg);
             return Results.Json(cfg, jsonOpts);
         });
@@ -1570,6 +1582,18 @@ public static class AppServer
 
             if (isRemoteMode)
             {
+                var selectedAt = cfg.RemoteVideoSelectedAtUtc;
+                var recordEnabledAt = selectedAt?.AddSeconds(RemoteVideoRecordDelaySeconds);
+                if (recordEnabledAt > DateTimeOffset.UtcNow)
+                {
+                    var remainingSeconds = Math.Max(1, (int)Math.Ceiling((recordEnabledAt.Value - DateTimeOffset.UtcNow).TotalSeconds));
+                    return RecordingStartProblem(
+                        "REMOTE_VIDEO_LOADING",
+                        "Remote video is loading",
+                        $"Wait {remainingSeconds} second{(remainingSeconds == 1 ? "" : "s")} after selecting a Remote video before starting recording.",
+                        StatusCodes.Status409Conflict);
+                }
+
                 try
                 {
                     _ = RemotePlaybackManager.BuildVideoUri(cfg);
