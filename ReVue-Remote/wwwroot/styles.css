@@ -21,43 +21,40 @@ body {
     padding: 18px;
 }
 
-.shell {
+.pageFrame {
+    position: relative;
     width: min(1400px, 100%);
-    display: grid;
-    gap: 0;
+    min-width: 0;
+    min-height: 0;
 }
 
-header {
+.shell {
+    width: 100%;
+    display: grid;
+    gap: 0;
+    transform-origin: top left;
+}
+
+body.fitViewport {
+    height: 100vh;
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.playerControls {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 14px;
+    justify-content: flex-start;
+    gap: 12px;
+    min-height: 68px;
     margin-bottom: 12px;
 }
 
-.brandBlock {
-    min-width: 0;
-}
-
-.brand {
-    font-size: clamp(22px, 3vw, 34px);
-    font-weight: 800;
-    letter-spacing: 0.02em;
-}
-
-.playbackStatus {
-    margin-top: 3px;
-    color: #b9c0d9;
-    font-size: 14px;
-}
-
-.headerControls {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 12px;
-    min-height: 68px;
-}
+.sessionControl { order: 1; }
+.volumeControl { order: 2; }
+.panelControl { order: 3; }
+.reviewIndicator { order: 4; }
 
 .languageControl {
     position: relative;
@@ -65,7 +62,8 @@ header {
     flex: 0 0 auto;
     width: 128px;
     height: 44px;
-    margin-left: 2px;
+    order: 5;
+    margin-left: auto;
     padding: 4px 8px;
     border: 1px solid #3c4567;
     border-radius: 7px;
@@ -154,11 +152,12 @@ header {
 .panelTypeButton {
     width: max-content;
     min-height: 34px;
-    display: flex;
+    display: grid;
+    grid-template-columns: max-content auto;
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    padding: 5px 2px;
+    padding: 5px 27px 5px 2px;
     border: 0;
     border-radius: 0;
     background: transparent;
@@ -166,6 +165,15 @@ header {
     font: 700 13px/1 "Segoe UI", Arial, sans-serif;
     cursor: pointer;
 }
+
+.panelTypeButton #panelTypeLabel,
+.panelTypeButton .panelTypeSizer {
+    grid-column: 1;
+    grid-row: 1;
+}
+
+.panelTypeSizer { visibility: hidden; }
+.panelTypeButton .panelChevron { grid-column: 2; grid-row: 1; }
 
 .panelChevron {
     font-size: 18px;
@@ -326,6 +334,23 @@ header {
     margin-bottom: 1px;
 }
 
+.playbackStatus {
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 3;
+    max-width: calc(100% - 16px);
+    padding: 7px 11px;
+    overflow: hidden;
+    border-radius: 0 0 6px 0;
+    background: #666;
+    color: #fff;
+    font: 600 14px/1.2 "Segoe UI", Arial, sans-serif;
+    text-align: left;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 video {
     width: 100%;
     height: 100%;
@@ -341,6 +366,7 @@ video.preloading {
 }
 
 .emptyState {
+    --audio-test-control-width: 170px;
     position: absolute;
     inset: 0;
     display: grid;
@@ -353,21 +379,160 @@ video.preloading {
     background: linear-gradient(145deg, rgba(10,12,20,0.92), rgba(22,27,51,0.88));
 }
 
-.emptyStateWatermark {
+.snow {
     display: none;
     position: absolute;
-    width: min(88%, 960px);
-    height: 88%;
-    object-fit: contain;
-    opacity: 0.1;
-    user-select: none;
+    inset: 0;
+    overflow: hidden;
+    background: #151515 repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.22) 0 1px, transparent 1px 4px);
 }
 
-.emptyState.waitingForVideo .emptyStateWatermark { display: block; }
+.snow::before,
+.snow::after {
+    position: absolute;
+    inset: -20%;
+    content: "";
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='120' viewBox='0 0 180 120'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4' seed='28' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='.82'/%3E%3C/svg%3E");
+    background-size: 180px 120px;
+    image-rendering: pixelated;
+    animation: snowShift 160ms steps(2, end) infinite;
+}
+
+.snow::after {
+    opacity: 0.45;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64' viewBox='0 0 64 64'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='turbulence' baseFrequency='.55' numOctaves='3' seed='83' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+    background-size: 64px 64px;
+    mix-blend-mode: screen;
+    animation-duration: 110ms;
+    animation-direction: reverse;
+}
+
+.emptyState.enterRinkId .snow { display: block; }
+
+@keyframes snowShift {
+    0% { transform: translate3d(-2%, 1%, 0); }
+    25% { transform: translate3d(3%, -2%, 0); }
+    50% { transform: translate3d(-1%, 3%, 0); }
+    75% { transform: translate3d(2%, 1%, 0); }
+    100% { transform: translate3d(-3%, -1%, 0); }
+}
+
+.testPattern {
+    display: none;
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to right,
+        #f7f7f7 0 14.2857%,
+        #f5eb00 14.2857% 28.5714%,
+        #00e8dc 28.5714% 42.8571%,
+        #00d820 42.8571% 57.1428%,
+        #db00ca 57.1428% 71.4285%,
+        #db0019 71.4285% 85.7142%,
+        #0927d5 85.7142% 100%);
+}
+
+.emptyState.waitingForVideo .testPattern,
+.emptyState.operatorOffline .testPattern { display: block; }
+
+.testPatternLabel {
+    position: absolute;
+    top: 56%;
+    left: 50%;
+    width: max-content;
+    max-width: calc(100% - 24px);
+    padding: 8px clamp(18px, 4vw, 48px);
+    transform: translate(-50%, -50%);
+    background: #030303;
+    color: #fff;
+    font: 400 clamp(28px, 5vw, 70px)/1.2 Arial, sans-serif;
+    letter-spacing: 0.02em;
+    text-align: center;
+}
+
+.emptyState.waitingForVideo .emptyStateMessage,
+.emptyState.operatorOffline .emptyStateMessage {
+    display: none;
+}
+
+.audioTestButton {
+    display: none;
+    position: absolute;
+    right: 18px;
+    bottom: 18px;
+    z-index: 2;
+    width: var(--audio-test-control-width);
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 42px;
+    padding: 8px 13px;
+    border: 1px solid rgba(255, 255, 255, 0.8);
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.88);
+    color: #fff;
+    font: 700 14px/1.2 "Segoe UI", Arial, sans-serif;
+    cursor: pointer;
+    pointer-events: auto;
+}
+
+.emptyState.waitingForVideo .audioTestButton { display: flex; }
+.audioTestButton:hover { background: #1b2342; }
+.audioTestButton:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.audioTestButton svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+.audioTestFeedback {
+    display: none;
+    position: absolute;
+    right: 18px;
+    bottom: 66px;
+    z-index: 2;
+    width: var(--audio-test-control-width);
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+}
+
+.emptyState.waitingForVideo .audioTestFeedback.active { display: flex; }
+
+.audioTestLevel {
+    max-width: 100%;
+    padding: 5px 9px;
+    border-radius: 5px;
+    background: rgba(0, 0, 0, 0.88);
+    color: #fff;
+    font: 700 13px/1.2 "Segoe UI", Arial, sans-serif;
+    text-align: center;
+}
+
+.audioTestWave {
+    width: 72px;
+    height: 24px;
+    overflow: hidden;
+    fill: none;
+    stroke: #80e6ff;
+    stroke-width: 2;
+    stroke-linecap: round;
+    opacity: 0.4;
+}
+
+.audioTestFeedback.audible .audioTestWave { opacity: 1; }
+.audioTestFeedback.audible .audioTestWave path { animation: testToneWave 900ms linear infinite; }
+
+@keyframes testToneWave {
+    to { transform: translateX(-24px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .audioTestFeedback.audible .audioTestWave path { animation: none; }
+    .snow::before,
+    .snow::after { animation: none; }
+}
 
 .emptyStateMessage {
     position: relative;
     z-index: 1;
+    line-height: 1.25;
+    white-space: pre-line;
 }
 
 .emptyState.hidden { display: none; }
@@ -383,15 +548,18 @@ label {
 }
 
 .sessionControl {
-    width: 146px;
-    flex: 0 0 146px;
+    width: calc(7ch + 47px);
+    flex: 0 0 calc(7ch + 47px);
+    font: 700 14px/1 ui-monospace, SFMono-Regular, Consolas, monospace;
 }
 
 .sessionControl input[type="text"] {
     display: block;
     width: 100%;
     min-width: 0;
+    font: inherit;
     padding: 5px 2px;
+    text-align: center;
     border: 0;
     border-radius: 0;
     background: transparent;
@@ -455,8 +623,8 @@ input[type="text"] {
 }
 
 .volumeControl {
-    width: 168px;
-    flex: 0 0 168px;
+    width: 201.6px;
+    flex: 0 0 201.6px;
 }
 
 .volumeInputRow {
@@ -469,12 +637,14 @@ input[type="text"] {
 
 .volumeSliderControl {
     display: flex;
+    flex: 1 1 auto;
+    min-width: 0;
     align-items: center;
     justify-content: center;
 }
 
 .volumeSlider {
-    width: 90px;
+    width: 100%;
     height: 18px;
     min-height: 0;
     margin: 0;
@@ -505,6 +675,8 @@ input[type="text"] {
     display: grid;
     gap: 0;
 }
+
+.timelineSection[hidden] { display: none; }
 
 .timelineControlRow {
     position: relative;
@@ -666,14 +838,49 @@ button:focus-visible {
 
 @media (max-width: 680px) {
     body { padding: 8px; }
-    header { align-items: flex-start; }
-    .headerControls { gap: 7px; }
     .networkIndicator { min-width: 0; }
     #networkLatency { min-width: 68px; }
-    .sessionControl { width: 146px; flex-basis: 146px; }
 }
 
-@media (max-width: 460px) {
-    header { display: grid; }
-    .headerControls { justify-content: start; }
+@media (max-width: 1024px) {
+    .playerControls {
+        justify-content: flex-start;
+        flex-wrap: wrap;
+        gap: 5px 6px;
+        min-height: 44px;
+        margin-bottom: 6px;
+    }
+
+    .panelControl { margin-left: 0; }
+
+    .reviewIndicator:not(.hidden) {
+        order: 6;
+        flex: 0 0 100%;
+        min-width: 0;
+    }
+}
+
+@media (max-width: 640px) {
+    .playerControls {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 5px;
+    }
+
+    .sessionControl,
+    .volumeControl,
+    .panelControl,
+    .languageControl {
+        width: 100%;
+        margin: 0;
+        flex: none;
+    }
+
+    .panelTypeButton { width: 100%; }
+    .muteControl { flex: 0 0 auto; }
+
+    .reviewIndicator:not(.hidden) {
+        grid-column: 1 / -1;
+        grid-row: 3;
+    }
 }

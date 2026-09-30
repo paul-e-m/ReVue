@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Http;
 using ReVueVRO.Models;
@@ -18,7 +19,41 @@ public sealed partial class RemotePlaybackManager : IDisposable
     };
 
     private readonly object _stateLock = new();
+    private readonly object _publisherLock = new();
+    private readonly SemaphoreSlim _publisherSignal = new(0, 1);
+    private readonly CancellationTokenSource _publisherStop = new();
+    private readonly Task _publisherTask;
+    private readonly string _operatorInstanceId = Guid.NewGuid().ToString("N");
+    // UTC ticks give a restarted publisher a strictly newer generation than
+    // any command produced by the previous process, including fast restarts.
+    private readonly long _operatorGeneration = DateTime.UtcNow.Ticks;
+    private RemotePlaybackIntent? _desiredIntent;
+    private RemotePlaybackIntent? _outboxIntent;
+    private CancellationTokenSource? _activePublishCancellation;
+    private long _nextIntentVersion;
+    private long _nextOperatorSequence;
     private double? _recordingSourceStartSeconds;
+
+    // Replay and recording each provide a fresh position every second. This
+    // is only the fallback that renews the lease if that source heartbeat is
+    // delayed (for example, when a browser is temporarily throttled).
+    private const int RemoteHeartbeatMilliseconds = 2_000;
+    private const int RemoteRetryMaximumMilliseconds = 5_000;
+
+    public RemotePlaybackManager()
+    {
+        _outboxIntent = LoadOutbox();
+        if (_outboxIntent is not null && DateTimeOffset.UtcNow - _outboxIntent.QueuedAtUtc > TimeSpan.FromSeconds(5))
+        {
+            _outboxIntent = null;
+            DeleteOutbox();
+        }
+        _desiredIntent = _outboxIntent;
+        if (_desiredIntent is not null)
+            _nextIntentVersion = _desiredIntent.Version;
+        _publisherTask = Task.Run(PublishLoopAsync);
+        SignalPublisher();
+    }
 
     [GeneratedRegex("^[A-Z0-9]{6}$", RegexOptions.CultureInvariant)]
     private static partial Regex SessionCodeRegex();
@@ -34,9 +69,9 @@ public sealed partial class RemotePlaybackManager : IDisposable
 
     public static Uri BuildVideoUri(AppConfig cfg)
     {
-        ValidateConnection(cfg.RemoteHostUrl, cfg.RemoteSessionCode);
         if (string.IsNullOrWhiteSpace(cfg.RemoteVideoId))
-            throw new InvalidOperationException("Select a downloaded video in the ReVue VRO main window.");
+            throw new InvalidOperationException("Click 'Select Video' button");
+        ValidateConnection(cfg.RemoteHostUrl, cfg.RemoteSessionCode);
 
         return BuildUri(
             cfg.RemoteHostUrl,
@@ -88,6 +123,9 @@ public sealed partial class RemotePlaybackManager : IDisposable
             using var response = await _httpClient.GetAsync(BuildUri(hostUrl,
                 $"api/sessions/{Uri.EscapeDataString(NormalizeSessionCode(sessionCode))}/videos/{Uri.EscapeDataString(video.Id)}/content"),
                 HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            if ((int)response.StatusCode >= 500)
+                throw new HttpRequestException($"ReVue-Remote returned HTTP {(int)response.StatusCode} while downloading the video.",
+                    null, response.StatusCode);
             await EnsureSuccessAsync(response, cancellationToken);
             var total = response.Content.Headers.ContentLength ?? video.SizeBytes;
             await using var input = await response.Content.ReadAsStreamAsync(cancellationToken);
@@ -109,6 +147,8 @@ public sealed partial class RemotePlaybackManager : IDisposable
                     downloaded += count;
                     progress.Report((downloaded, total));
                 }
+                if (response.Content.Headers.ContentLength is long expectedLength && downloaded != expectedLength)
+                    throw new IOException($"Video transfer ended after {downloaded} of {expectedLength} bytes.");
                 await output.FlushAsync(cancellationToken);
             }
 
@@ -244,13 +284,13 @@ public sealed partial class RemotePlaybackManager : IDisposable
         }
     }
 
-    public async Task PublishRecordingStartedAsync(
+    public Task PublishRecordingStartedAsync(
         AppConfig cfg,
         double sourceStartSeconds,
         CancellationToken cancellationToken = default)
     {
         SetRecordingSourceStart(sourceStartSeconds);
-        await PublishAsync(cfg, new RemotePlaybackCommand
+        return QueuePublish(cfg, new RemotePlaybackCommand
         {
             VideoId = cfg.RemoteVideoId,
             PositionSeconds = Math.Max(0, sourceStartSeconds),
@@ -262,13 +302,13 @@ public sealed partial class RemotePlaybackManager : IDisposable
         }, cancellationToken);
     }
 
-    public async Task PublishRecordingStoppedAsync(
+    public Task PublishRecordingStoppedAsync(
         AppConfig cfg,
         double durationSeconds,
         CancellationToken cancellationToken = default)
     {
         var sourceStart = GetRecordingSourceStart();
-        await PublishAsync(cfg, new RemotePlaybackCommand
+        return QueuePublish(cfg, new RemotePlaybackCommand
         {
             VideoId = cfg.RemoteVideoId,
             PositionSeconds = Math.Max(0, sourceStart + Math.Max(0, durationSeconds)),
@@ -286,7 +326,7 @@ public sealed partial class RemotePlaybackManager : IDisposable
         CancellationToken cancellationToken = default)
     {
         var sourceStart = GetRecordingSourceStart();
-        return PublishAsync(cfg, new RemotePlaybackCommand
+        return QueuePublish(cfg, new RemotePlaybackCommand
         {
             VideoId = cfg.RemoteVideoId,
             PositionSeconds = Math.Max(0, sourceStart + Math.Max(0, local.PositionSeconds)),
@@ -311,7 +351,7 @@ public sealed partial class RemotePlaybackManager : IDisposable
     }
 
     public Task PublishIdleAsync(AppConfig cfg, CancellationToken cancellationToken = default)
-        => PublishAsync(cfg, new RemotePlaybackCommand
+        => QueuePublish(cfg, new RemotePlaybackCommand
         {
             VideoId = cfg.RemoteVideoId,
             PositionSeconds = 0,
@@ -330,23 +370,239 @@ public sealed partial class RemotePlaybackManager : IDisposable
         }
     }
 
-    private async Task PublishAsync(
+    public void StopPublishing()
+    {
+        lock (_publisherLock)
+        {
+            _desiredIntent = null;
+            _outboxIntent = null;
+            DeleteOutbox();
+            _activePublishCancellation?.Cancel();
+        }
+        SignalPublisher();
+    }
+
+    private Task QueuePublish(
         AppConfig cfg,
         RemotePlaybackCommand command,
         CancellationToken cancellationToken)
     {
-        if (!IsRemoteMode(cfg)) return;
+        if (!IsRemoteMode(cfg)) return Task.CompletedTask;
         ValidateConnection(cfg.RemoteHostUrl, cfg.RemoteSessionCode);
+
+        lock (_publisherLock)
+        {
+            var transportBoundary = IsTransportBoundary(_desiredIntent?.Command, command);
+            var intent = new RemotePlaybackIntent
+            {
+                Version = ++_nextIntentVersion,
+                HostUrl = cfg.RemoteHostUrl,
+                SessionCode = NormalizeSessionCode(cfg.RemoteSessionCode),
+                Command = CloneCommand(command),
+                QueuedAtUtc = DateTimeOffset.UtcNow
+            };
+            _desiredIntent = intent;
+            _outboxIntent = intent;
+            SaveOutbox(intent);
+            // Preempt only a transport boundary. Cancelling routine position
+            // heartbeats on a slow connection could otherwise keep replacing
+            // the active request before it has a chance to complete.
+            if (transportBoundary)
+                _activePublishCancellation?.Cancel();
+        }
+        SignalPublisher();
+        return Task.CompletedTask;
+    }
+
+    private async Task PublishLoopAsync()
+    {
+        var retryDelayMilliseconds = 0;
+        while (!_publisherStop.IsCancellationRequested)
+        {
+            RemotePlaybackIntent? intent;
+            lock (_publisherLock) intent = _desiredIntent;
+            if (intent is null)
+            {
+                await WaitForPublisherSignalAsync(Timeout.Infinite, _publisherStop.Token);
+                continue;
+            }
+
+            try
+            {
+                using var activePublishCancellation = CancellationTokenSource.CreateLinkedTokenSource(_publisherStop.Token);
+                lock (_publisherLock)
+                {
+                    if (_desiredIntent?.Version != intent.Version)
+                        continue;
+                    _activePublishCancellation = activePublishCancellation;
+                }
+                try
+                {
+                    await SendIntentAsync(intent, activePublishCancellation.Token);
+                }
+                finally
+                {
+                    lock (_publisherLock)
+                    {
+                        if (ReferenceEquals(_activePublishCancellation, activePublishCancellation))
+                            _activePublishCancellation = null;
+                    }
+                }
+                retryDelayMilliseconds = 0;
+                lock (_publisherLock)
+                {
+                    if (_outboxIntent?.Version == intent.Version)
+                    {
+                        _outboxIntent = null;
+                        DeleteOutbox();
+                    }
+                }
+                await WaitForPublisherSignalAsync(RemoteHeartbeatMilliseconds, _publisherStop.Token);
+            }
+            catch (OperationCanceledException) when (_publisherStop.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (OperationCanceledException) when (IsSuperseded(intent))
+            {
+                retryDelayMilliseconds = 0;
+            }
+            catch
+            {
+                lock (_publisherLock)
+                {
+                    if (_desiredIntent?.Version == intent.Version)
+                    {
+                        _outboxIntent = intent;
+                        SaveOutbox(intent);
+                    }
+                }
+                retryDelayMilliseconds = retryDelayMilliseconds == 0
+                    ? 250
+                    : Math.Min(retryDelayMilliseconds * 2, RemoteRetryMaximumMilliseconds);
+                await WaitForPublisherSignalAsync(retryDelayMilliseconds, _publisherStop.Token);
+            }
+        }
+    }
+
+    private bool IsSuperseded(RemotePlaybackIntent intent)
+    {
+        lock (_publisherLock)
+            return _desiredIntent?.Version != intent.Version;
+    }
+
+    private static bool IsTransportBoundary(RemotePlaybackCommand? previous, RemotePlaybackCommand next)
+    {
+        if (previous is null) return true;
+        return !string.Equals(previous.VideoId, next.VideoId, StringComparison.OrdinalIgnoreCase) ||
+               !string.Equals(previous.Mode, next.Mode, StringComparison.OrdinalIgnoreCase) ||
+               previous.IsPlaying != next.IsPlaying ||
+               Math.Abs(previous.PlaybackRate - next.PlaybackRate) > 0.001 ||
+               previous.PlaybackDiscontinuity != next.PlaybackDiscontinuity;
+    }
+
+    private async Task SendIntentAsync(RemotePlaybackIntent intent, CancellationToken cancellationToken)
+    {
+        var command = CloneCommand(intent.Command);
+        command.OperatorInstanceId = _operatorInstanceId;
+        command.OperatorGeneration = _operatorGeneration;
+        command.OperatorSequence = Interlocked.Increment(ref _nextOperatorSequence);
 
         using var request = CreateRequest(
             HttpMethod.Post,
-            cfg.RemoteHostUrl,
-            $"api/sessions/{Uri.EscapeDataString(NormalizeSessionCode(cfg.RemoteSessionCode))}/playback");
+            intent.HostUrl,
+            $"api/sessions/{Uri.EscapeDataString(intent.SessionCode)}/playback");
         request.Content = JsonContent.Create(command);
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutCts.CancelAfter(TimeSpan.FromSeconds(5));
         using var response = await _httpClient.SendAsync(request, timeoutCts.Token);
         await EnsureSuccessAsync(response, timeoutCts.Token);
+    }
+
+    private async Task WaitForPublisherSignalAsync(int timeoutMilliseconds, CancellationToken cancellationToken)
+    {
+        if (timeoutMilliseconds == Timeout.Infinite)
+        {
+            await _publisherSignal.WaitAsync(cancellationToken);
+            return;
+        }
+
+        using var waitCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var signal = _publisherSignal.WaitAsync(waitCts.Token);
+        var delay = Task.Delay(timeoutMilliseconds, cancellationToken);
+        if (await Task.WhenAny(signal, delay) == signal)
+        {
+            await signal;
+            return;
+        }
+        waitCts.Cancel();
+        try { await signal; } catch (OperationCanceledException) { }
+    }
+
+    private void SignalPublisher()
+    {
+        // A wake-up is only a coalesced notification: one pending signal is
+        // enough because the publisher always reads the latest desired state.
+        try { _publisherSignal.Release(); }
+        catch (SemaphoreFullException) { }
+    }
+
+    private static RemotePlaybackCommand CloneCommand(RemotePlaybackCommand source) => new()
+    {
+        VideoId = source.VideoId,
+        PositionSeconds = source.PositionSeconds,
+        TimelinePositionSeconds = source.TimelinePositionSeconds,
+        TimelineDurationSeconds = source.TimelineDurationSeconds,
+        IsPlaying = source.IsPlaying,
+        PlaybackRate = source.PlaybackRate,
+        PlaybackDiscontinuity = source.PlaybackDiscontinuity,
+        Mode = source.Mode,
+        ProgramStartSeconds = source.ProgramStartSeconds,
+        HalfwaySeconds = source.HalfwaySeconds,
+        OpenClipStartSeconds = source.OpenClipStartSeconds,
+        ZoomScale = source.ZoomScale,
+        ZoomOffsetX = source.ZoomOffsetX,
+        ZoomOffsetY = source.ZoomOffsetY,
+        Clips = source.Clips.Select(clip => new RemoteTimelineClip
+        {
+            Index = clip.Index,
+            StartSeconds = clip.StartSeconds,
+            EndSeconds = clip.EndSeconds
+        }).ToList()
+    };
+
+    private static RemotePlaybackIntent? LoadOutbox()
+    {
+        try
+        {
+            if (!File.Exists(AppPaths.LocalVroRemotePlaybackOutboxPath)) return null;
+            return JsonSerializer.Deserialize<RemotePlaybackIntent>(File.ReadAllText(AppPaths.LocalVroRemotePlaybackOutboxPath));
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static void SaveOutbox(RemotePlaybackIntent intent)
+    {
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(AppPaths.LocalVroRemotePlaybackOutboxPath)!);
+            var path = AppPaths.LocalVroRemotePlaybackOutboxPath;
+            var temporaryPath = path + ".tmp";
+            File.WriteAllText(temporaryPath, JsonSerializer.Serialize(intent));
+            File.Move(temporaryPath, path, overwrite: true);
+        }
+        catch
+        {
+        }
+    }
+
+    private static void DeleteOutbox()
+    {
+        try { if (File.Exists(AppPaths.LocalVroRemotePlaybackOutboxPath)) File.Delete(AppPaths.LocalVroRemotePlaybackOutboxPath); }
+        catch { }
     }
 
     private static HttpRequestMessage CreateRequest(
@@ -381,13 +637,31 @@ public sealed partial class RemotePlaybackManager : IDisposable
         if (response.IsSuccessStatusCode) return;
         var detail = (await response.Content.ReadAsStringAsync(cancellationToken)).Trim();
         if (detail.Length > 500) detail = detail[..500];
-        throw new InvalidOperationException(
+        throw new HttpRequestException(
             string.IsNullOrWhiteSpace(detail)
                 ? $"ReVue-Remote returned HTTP {(int)response.StatusCode}."
-                : detail);
+                : detail,
+            null,
+            response.StatusCode);
     }
 
-    public void Dispose() => _httpClient.Dispose();
+    public void Dispose()
+    {
+        _publisherStop.Cancel();
+        try { _publisherTask.Wait(TimeSpan.FromSeconds(1)); } catch { }
+        _publisherStop.Dispose();
+        _publisherSignal.Dispose();
+        _httpClient.Dispose();
+    }
+
+    private sealed class RemotePlaybackIntent
+    {
+        public long Version { get; set; }
+        public string HostUrl { get; set; } = "";
+        public string SessionCode { get; set; } = "";
+        public RemotePlaybackCommand Command { get; set; } = new();
+        public DateTimeOffset QueuedAtUtc { get; set; }
+    }
 
     private sealed class ProgressReadStream : Stream
     {

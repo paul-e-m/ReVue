@@ -17,7 +17,14 @@
     const networkIndicator = document.getElementById("networkIndicator");
     const networkLatency = document.getElementById("networkLatency");
     const emptyState = document.getElementById("emptyState");
+    const audioTestButton = document.getElementById("audioTestButton");
+    const audioTestLabel = document.getElementById("audioTestLabel");
+    const audioTestFeedback = document.getElementById("audioTestFeedback");
+    const audioTestLevelText = document.getElementById("audioTestLevelText");
     const timelineCanvas = document.getElementById("timelineCanvas");
+    const timelineSection = document.getElementById("timelineSection");
+    const pageFrame = document.getElementById("pageFrame");
+    const shell = pageFrame.querySelector(".shell");
     const timelineControlRow = document.getElementById("timelineControlRow");
     const videoFileName = document.getElementById("videoFileName");
     const judgingTransport = document.getElementById("judgingTransport");
@@ -33,7 +40,7 @@
             language: "Language", waitingForRinkId: "Waiting for a Rink ID.", volume: "Volume", mute: "Mute",
             videoVolume: "Video volume", rinkId: "Rink ID", rinkIdInput: "Six-character Rink ID", role: "Role",
             viewerRole: "Viewer role", technicalPanel: "Technical", judge: "Judge", referee: "Referee",
-            remotePlayer: "Passive remote replay player", enterRinkId: "Enter Rink ID", waitingForVideo: "Stand by for video...", play: "Play", pause: "Pause",
+            remotePlayer: "Passive remote replay player", enterRinkId: "Welcome to ReVue-Remote\nEnter Rink ID", waitingForVideo: "Stand by for video...", noSignal: "NO SIGNAL", playTestTone: "Sound check", stopTestTone: "Sound off", testToneUnavailable: "Audio test unavailable", testToneVolume: "Volume: {percent}%", audioMuted: "Audio is muted", operatorOffline: "ReVue VRO connection lost.", play: "Play", pause: "Pause",
             playVideo: "Play video", pauseVideo: "Pause video", setStopwatchZero: "Set stopwatch zero",
             clearStopwatch: "Clear stopwatch", videoTimeline: "Video timeline", videoPlaybackPosition: "Video playback position",
             checking: "CHECKING…", disconnected: "DISCONNECTED", checkingServer: "Checking server connectivity", serverDisconnected: "Server disconnected",
@@ -45,7 +52,7 @@
             enterRink: "Enter a six-character Rink ID.", ipBlocked: "This IP address is blocked. Access resumes in {time}.",
             finalAttemptAvailable: "Final attempt available in {time}. Another invalid Rink ID will block this IP address for 24 hours.",
             invalidRinkDelay: "Invalid Rink ID. Try again in {time}.", connectedWaitingVideo: "Connected to {code}. Waiting for a video.",
-            preparingVideo: "Connected to {code}. Preparing selected video.", reverseUnavailable: "Reverse playback is not shown on the passive player.",
+            preparingVideo: "{code} · Preparing video…", reverseUnavailable: "Reverse playback is not shown on the passive player.",
             waitForward: "Connected to {code}. Waiting for forward playback.", adjustVolume: "Connected to {code}. Adjust Volume to enable playback with sound.",
             connectingEmpty: "Connecting to ReVue VRO…", connecting: "Connecting to {code}…", rinkNotCreated: "Rink ID {code} has not been created.",
             serverNotReached: "The ReVue-Remote server could not be reached.", playbackUnreadable: "The playback update could not be read.",
@@ -56,7 +63,7 @@
             language: "Langue", waitingForRinkId: "En attente d’un ID de patinoire.", volume: "Volume", mute: "Muet",
             videoVolume: "Volume de la vidéo", rinkId: "ID de patinoire", rinkIdInput: "ID de patinoire à six caractères", role: "Rôle",
             viewerRole: "Rôle du spectateur", technicalPanel: "Technique", judge: "Juge", referee: "Arbitre",
-            remotePlayer: "Lecteur de reprise à distance", enterRinkId: "Saisissez l’ID de patinoire", waitingForVideo: "En attente de la vidéo…", play: "Lire", pause: "Pause",
+            remotePlayer: "Lecteur de reprise à distance", enterRinkId: "Bienvenue dans ReVue-Remote\nSaisissez l’ID de patinoire", waitingForVideo: "En attente de la vidéo…", noSignal: "AUCUN SIGNAL", playTestTone: "Test sonore", stopTestTone: "Couper le son", testToneUnavailable: "Test audio indisponible", testToneVolume: "Volume : {percent} %", audioMuted: "Le son est coupé", operatorOffline: "Connexion à ReVue VRO perdue.", play: "Lire", pause: "Pause",
             playVideo: "Lire la vidéo", pauseVideo: "Mettre la vidéo en pause", setStopwatchZero: "Remettre le chronomètre à zéro",
             clearStopwatch: "Effacer le chronomètre", videoTimeline: "Chronologie de la vidéo", videoPlaybackPosition: "Position de lecture de la vidéo",
             checking: "VÉRIFICATION…", disconnected: "DÉCONNECTÉ", checkingServer: "Vérification de la connexion au serveur", serverDisconnected: "Serveur déconnecté",
@@ -68,7 +75,7 @@
             enterRink: "Saisissez un ID de patinoire à six caractères.", ipBlocked: "Cette adresse IP est bloquée. L’accès reprendra dans {time}.",
             finalAttemptAvailable: "Dernière tentative disponible dans {time}. Un autre ID de patinoire invalide bloquera cette adresse IP pendant 24 heures.",
             invalidRinkDelay: "ID de patinoire invalide. Réessayez dans {time}.", connectedWaitingVideo: "Connecté à {code}. En attente d’une vidéo.",
-            preparingVideo: "Connecté à {code}. Préparation de la vidéo sélectionnée.", reverseUnavailable: "La lecture arrière n’est pas affichée dans le lecteur passif.",
+            preparingVideo: "{code} · Préparation de la vidéo…", reverseUnavailable: "La lecture arrière n’est pas affichée dans le lecteur passif.",
             waitForward: "Connecté à {code}. En attente de la lecture avant.", adjustVolume: "Connecté à {code}. Réglez le volume pour activer la lecture avec le son.",
             connectingEmpty: "Connexion à ReVue VRO…", connecting: "Connexion à {code}…", rinkNotCreated: "L’ID de patinoire {code} n’a pas été créé.",
             serverNotReached: "Le serveur ReVue-Remote est inaccessible.", playbackUnreadable: "La mise à jour de lecture est illisible.",
@@ -85,13 +92,9 @@
     let appliedState = null;
     let stateApplySequence = 0;
     let reconnectTimer = null;
+    let connectionAttempt = 0;
     let connectivityProbeSequence = 0;
     let lastConnectivityResultSequence = 0;
-    let cachedVideoKey = "";
-    let requestedCacheKey = "";
-    let cachedObjectUrl = "";
-    let cacheAbortController = null;
-    let cacheGeneration = 0;
     let rinkIdDelayTimer = null;
     let panelType = "technical";
     let judgingReviewActive = false;
@@ -107,13 +110,17 @@
     let language = localStorage.getItem("ReVueRemoteLanguage") === "fr" ? "fr" : "en";
     let lastStatus = null;
     let lastEmpty = null;
+    let testToneContext = null;
+    let testToneOscillator = null;
+    let testToneGain = null;
+    let pageFitScale = 1;
+    let fitFrameRequest = 0;
     let connectivityState = "checking";
     let connectivityMessage = "";
 
     const CONNECTIVITY_INTERVAL_MS = 3000;
     const CONNECTIVITY_TIMEOUT_MS = 3000;
     const FAST_CONNECTION_LIMIT_MS = 500;
-    const VIDEO_CACHE_NAME = "revue-remote-active-video-v1";
     const PANEL_SESSION_KEY = "ReVueRemotePanelType";
 
     function t(key, values = {}) {
@@ -133,7 +140,9 @@
         updateReviewIndicator(latestState);
         if (lastStatus) playbackStatus.textContent = t(lastStatus.key, lastStatus.values);
         if (lastEmpty) emptyStateMessage.textContent = t(lastEmpty.key, lastEmpty.values);
+        updateTestToneOutput();
         setConnectivityState(connectivityState, connectivityState === "checking" ? t("checking") : connectivityMessage);
+        scheduleViewportFit();
     }
 
     function normalizeCode(value) {
@@ -147,11 +156,13 @@
     function setStatus(key, values = {}) {
         lastStatus = { key, values };
         playbackStatus.textContent = t(key, values);
+        scheduleViewportFit();
     }
 
     function setStatusText(message) {
         lastStatus = null;
         playbackStatus.textContent = message;
+        scheduleViewportFit();
     }
 
     function formatCountdown(totalSeconds) {
@@ -173,14 +184,14 @@
 
     function startRinkIdDelay(payload) {
         clearRinkIdDelay();
-        closeConnection();
+        showEnterRinkId();
         const blocked = !!payload?.blocked;
         const finalAttempt = !!payload?.finalAttempt;
         const delaySeconds = Math.max(1, Number(payload?.retryAfterSeconds) || 1);
         const endsAt = Date.now() + delaySeconds * 1000;
         sessionCodeInput.value = "";
         sessionCodeInput.disabled = true;
-        setEmpty(blocked ? "blockedEmpty" : "invalidRinkEmpty");
+        setEmpty(blocked ? "blockedEmpty" : "enterRinkId");
 
         const update = () => {
             const remaining = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000));
@@ -225,9 +236,20 @@
             String(state?.mode || "").toLowerCase() !== "ready";
     }
 
+    function syncVideoAudio() {
+        // Technical clients hear the live/Recording feed according to their
+        // own controls, but VRO replay must always be silent. Keep the saved
+        // mute preference untouched so it is restored when Recording resumes.
+        video.muted = muteInput.checked || (panelType === "technical" && isReviewState(latestState));
+    }
+
+    function isSelectedVideoAwaitingRecord(state) {
+        return !!state?.videoId && state.mode === "ready" && state.playbackEnabled !== true;
+    }
+
     function updateReviewIndicator(state) {
         reviewIndicator.classList.remove("live", "review", "hidden");
-        if (isRecordingState(state)) {
+        if (isRecordingState(state) || isSelectedVideoAwaitingRecord(state)) {
             reviewIndicator.classList.add("live");
             reviewIndicatorText.textContent = t("live");
         } else if (isReviewState(state)) {
@@ -287,14 +309,14 @@
         } catch (error) {
             if (video.muted || video.volume <= 0) return false;
             try {
-                video.muted = true;
                 muteInput.checked = true;
+                syncVideoAudio();
                 autoplayMutedByBrowser = true;
                 await video.play();
                 return true;
             } catch {
-                video.muted = false;
                 muteInput.checked = false;
+                syncVideoAudio();
                 autoplayMutedByBrowser = false;
                 return false;
             }
@@ -347,21 +369,126 @@
     }
 
     function setEmpty(key, values = {}) {
+        if (key !== "waitingForVideo") stopTestTone();
         lastEmpty = { key, values };
         emptyStateMessage.textContent = t(key, values);
         emptyState.classList.toggle("waitingForVideo", key === "waitingForVideo");
+        emptyState.classList.toggle("enterRinkId", key === "enterRinkId");
+        emptyState.classList.toggle("operatorOffline", key === "operatorOffline");
         emptyState.classList.remove("hidden");
+        timelineSection.hidden = true;
+        scheduleViewportFit();
     }
 
     function hideEmpty() {
+        stopTestTone();
         emptyState.classList.add("hidden");
+        timelineSection.hidden = false;
+        scheduleViewportFit();
     }
+
+    function updateTestToneButton() {
+        const key = testToneOscillator ? "stopTestTone" : "playTestTone";
+        audioTestLabel.dataset.i18n = key;
+        audioTestLabel.textContent = t(key);
+        audioTestButton.setAttribute("aria-pressed", testToneOscillator ? "true" : "false");
+    }
+
+    function updateTestToneOutput() {
+        const active = !!testToneOscillator;
+        audioTestFeedback.classList.toggle("active", active);
+        if (!active) {
+            audioTestFeedback.classList.remove("audible");
+            audioTestLevelText.textContent = "";
+            return;
+        }
+        const percent = Math.max(0, Math.min(100, Number(volumeInput.value) || 0));
+        audioTestFeedback.classList.toggle("audible", !muteInput.checked && percent > 0);
+        audioTestLevelText.textContent = muteInput.checked ? t("audioMuted") : t("testToneVolume", { percent });
+        testToneGain.gain.setTargetAtTime(muteInput.checked ? 0 : 0.05 * percent / 100,
+            testToneContext.currentTime, 0.01);
+    }
+
+    function stopTestTone() {
+        if (!testToneOscillator) return;
+        const oscillator = testToneOscillator;
+        const gain = testToneGain;
+        const context = testToneContext;
+        testToneOscillator = null;
+        testToneGain = null;
+        testToneContext = null;
+        updateTestToneButton();
+        updateTestToneOutput();
+        try {
+            gain.gain.setTargetAtTime(0, context.currentTime, 0.006);
+            oscillator.stop(context.currentTime + 0.03);
+        } catch { }
+        window.setTimeout(() => context.close().catch(() => { }), 80);
+    }
+
+    async function startTestTone() {
+        const AudioContextType = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextType) {
+            audioTestButton.disabled = true;
+            audioTestLabel.dataset.i18n = "testToneUnavailable";
+            audioTestLabel.textContent = t("testToneUnavailable");
+            return;
+        }
+
+        try {
+            const context = new AudioContextType();
+            const oscillator = context.createOscillator();
+            const gain = context.createGain();
+            oscillator.type = "sine";
+            oscillator.frequency.value = 1000;
+            gain.gain.setValueAtTime(0, context.currentTime);
+            oscillator.connect(gain).connect(context.destination);
+            testToneContext = context;
+            testToneOscillator = oscillator;
+            testToneGain = gain;
+            oscillator.start();
+            updateTestToneButton();
+            updateTestToneOutput();
+            await context.resume();
+        } catch {
+            stopTestTone();
+        }
+    }
+
+    audioTestButton.addEventListener("click", () => {
+        if (testToneOscillator) stopTestTone();
+        else startTestTone();
+    });
+    window.addEventListener("pagehide", stopTestTone);
 
     function closeConnection() {
         if (eventSource) eventSource.close();
         eventSource = null;
         if (reconnectTimer !== null) clearTimeout(reconnectTimer);
         reconnectTimer = null;
+    }
+
+    function showEnterRinkId() {
+        connectionAttempt++;
+        closeConnection();
+        video.pause();
+        if (video.hasAttribute("src")) {
+            video.removeAttribute("src");
+            video.load();
+        }
+        sessionCode = "";
+        currentVideoId = "";
+        currentVideoSource = "";
+        latestState = null;
+        appliedState = null;
+        stateApplySequence++;
+        resetJudgingReview();
+        updateReviewIndicator(null);
+        setEmpty("enterRinkId");
+        setStatus("enterRink");
+        const url = new URL(location.href);
+        url.searchParams.delete("session");
+        history.replaceState(null, "", url);
     }
 
     function hostedPosition(state) {
@@ -441,10 +568,9 @@
 
     function drawTimeline() {
         if (!timelineCanvas) return;
-        const rect = timelineCanvas.getBoundingClientRect();
-        const dpr = window.devicePixelRatio || 1;
-        const width = Math.max(1, Math.round(rect.width));
-        const height = Math.max(1, Math.round(rect.height));
+        const dpr = (window.devicePixelRatio || 1) * pageFitScale;
+        const width = Math.max(1, timelineCanvas.clientWidth);
+        const height = Math.max(1, timelineCanvas.clientHeight);
         const pixelWidth = Math.max(1, Math.round(width * dpr));
         const pixelHeight = Math.max(1, Math.round(height * dpr));
         if (timelineCanvas.width !== pixelWidth || timelineCanvas.height !== pixelHeight) {
@@ -636,7 +762,8 @@
         const offsetY = Math.max(-2, Math.min(0, Number(state?.zoomOffsetY || 0)));
         const tx = offsetX * Math.max(1, video.clientWidth || 1);
         const ty = offsetY * Math.max(1, video.clientHeight || 1);
-        video.style.transform = `matrix(${scale},0,0,${scale},${tx},${ty})`;
+        const transform = `matrix(${scale},0,0,${scale},${tx},${ty})`;
+        if (video.style.transform !== transform) video.style.transform = transform;
     }
 
     function waitForVideoMetadata(sequence) {
@@ -676,62 +803,6 @@
             }
             window.setTimeout(finish, 1500);
         });
-    }
-
-    async function purgeCachedVideo() {
-        cacheGeneration++;
-        cacheAbortController?.abort();
-        cacheAbortController = null;
-        cachedVideoKey = "";
-        if (cachedObjectUrl) URL.revokeObjectURL(cachedObjectUrl);
-        cachedObjectUrl = "";
-        if ("caches" in window) {
-            try { await caches.delete(VIDEO_CACHE_NAME); } catch { }
-        }
-    }
-
-    async function cacheRecordingVideo(videoId, sourceUrl) {
-        if (!("caches" in window) || typeof fetch !== "function") return;
-        const videoKey = `${sessionCode}:${videoId}`;
-        if (requestedCacheKey === videoKey) return;
-        if (cachedVideoKey === videoKey && (cachedObjectUrl || cacheAbortController)) return;
-
-        requestedCacheKey = videoKey;
-        const generation = cacheGeneration + 1;
-        await purgeCachedVideo();
-        if (requestedCacheKey !== videoKey) return;
-        cacheGeneration = generation;
-        cachedVideoKey = videoKey;
-        const controller = new AbortController();
-        cacheAbortController = controller;
-
-        try {
-            let cache = await caches.open(VIDEO_CACHE_NAME);
-            let response = await cache.match(sourceUrl);
-            if (!response) {
-                const fetched = await fetch(sourceUrl, { cache: "reload", signal: controller.signal });
-                if (!fetched.ok) throw new Error(`HTTP ${fetched.status}`);
-                await cache.put(sourceUrl, fetched.clone());
-                response = fetched;
-            }
-
-            const blob = await response.blob();
-            if (controller.signal.aborted || generation !== cacheGeneration || cachedVideoKey !== videoKey) return;
-            cachedObjectUrl = URL.createObjectURL(blob);
-
-            // Never replace the source during initial recording. Once VRO
-            // stops or enters replay, re-apply the latest state and seek to
-            // its exact transport position using the complete local copy.
-            if (latestState && String(latestState.videoId || "") === videoId && latestState.mode !== "recording") {
-                applyState(latestState).catch(() => { });
-            }
-        } catch (error) {
-            if (error?.name !== "AbortError") console.warn("Video could not be cached; continuing with network playback.", error);
-            if (requestedCacheKey === videoKey) requestedCacheKey = "";
-            if (cachedVideoKey === videoKey && !cachedObjectUrl) cachedVideoKey = "";
-        } finally {
-            if (cacheAbortController === controller) cacheAbortController = null;
-        }
     }
 
     function resetJudgingReview() {
@@ -821,6 +892,7 @@
         const sequence = ++stateApplySequence;
         const previousState = appliedState;
         latestState = state;
+        syncVideoAudio();
         updateJudgingControls();
         const videoId = String(state?.videoId || "");
         videoFileName.textContent = String(state?.videoFileName || "");
@@ -838,19 +910,26 @@
             return;
         }
 
+        if (state.mode === "operator-offline") {
+            video.pause();
+            video.classList.add("preloading");
+            resetJudgingReview();
+            appliedState = state;
+            setEmpty("operatorOffline");
+            setStatus("operatorOffline");
+            return;
+        }
+
         const networkSource = apiUrl(`sessions/${encodeURIComponent(sessionCode)}/videos/${encodeURIComponent(videoId)}/content`);
-        const videoKey = `${sessionCode}:${videoId}`;
 
         if (state?.playbackEnabled !== true) {
             video.pause();
             video.classList.add("preloading");
             resetJudgingReview();
-            const cachedSourceAvailable = cachedVideoKey === videoKey && !!cachedObjectUrl;
-            const preloadSource = cachedSourceAvailable ? cachedObjectUrl : networkSource;
-            if (videoId !== currentVideoId || currentVideoSource !== preloadSource) {
+            if (videoId !== currentVideoId || currentVideoSource !== networkSource) {
                 currentVideoId = videoId;
-                currentVideoSource = preloadSource;
-                video.src = preloadSource;
+                currentVideoSource = networkSource;
+                video.src = networkSource;
                 video.load();
             }
             appliedState = state;
@@ -861,21 +940,12 @@
 
         video.classList.remove("preloading");
 
-        if (state.mode === "recording" && state.isPlaying && cachedVideoKey !== videoKey) {
-            cacheRecordingVideo(videoId, networkSource).catch(() => { });
-        }
-
-        const cachedSourceAvailable = cachedVideoKey === videoKey && !!cachedObjectUrl;
-        const keepCachedDuringRecording = state.mode === "recording" && currentVideoSource === cachedObjectUrl;
-        const desiredSource = cachedSourceAvailable && (state.mode !== "recording" || keepCachedDuringRecording)
-            ? cachedObjectUrl
-            : networkSource;
-        const videoChanged = videoId !== currentVideoId || desiredSource !== currentVideoSource;
+        const videoChanged = videoId !== currentVideoId || networkSource !== currentVideoSource;
         if (videoChanged) {
             video.pause();
             currentVideoId = videoId;
-            currentVideoSource = desiredSource;
-            video.src = desiredSource;
+            currentVideoSource = networkSource;
+            video.src = networkSource;
             video.load();
             await waitForVideoMetadata(sequence);
             if (sequence !== stateApplySequence) return;
@@ -896,7 +966,8 @@
         }
 
         hideEmpty();
-        video.playbackRate = Math.max(0.05, Math.min(4, Number(state.playbackRate || 1)));
+        const playbackRate = Math.max(0.05, Math.min(4, Number(state.playbackRate || 1)));
+        if (Math.abs(video.playbackRate - playbackRate) > 0.001) video.playbackRate = playbackRate;
         const target = normalizeToDuration(hostedPosition(state));
         const discontinuityChanged =
             Number(state?.playbackDiscontinuity || 0) !== Number(previousState?.playbackDiscontinuity || 0);
@@ -933,10 +1004,11 @@
         code = normalizeCode(code);
         sessionCodeInput.value = code;
         if (!/^[A-Z0-9]{6}$/.test(code)) {
-            setStatus("enterRink");
+            showEnterRinkId();
             return;
         }
 
+        const attempt = ++connectionAttempt;
         closeConnection();
         video.pause();
         sessionCode = code;
@@ -953,33 +1025,40 @@
 
         try {
             const validation = await fetch(apiUrl(`sessions/${encodeURIComponent(code)}/validate`), { cache: "no-store" });
+            if (attempt !== connectionAttempt) return;
             if (!validation.ok) {
                 let payload = {};
                 try { payload = await validation.json(); } catch { }
+                if (attempt !== connectionAttempt) return;
                 if (payload?.retryAfterSeconds || payload?.blocked) {
                     startRinkIdDelay(payload);
                 } else {
-                    setEmpty("invalidRinkEmpty");
+                    showEnterRinkId();
                     setStatus("rinkNotCreated", { code });
                 }
                 return;
             }
             clearRinkIdDelay();
         } catch {
+            if (attempt !== connectionAttempt) return;
             setStatus("serverNotReached");
             return;
         }
 
         eventSource = new EventSource(apiUrl(`sessions/${encodeURIComponent(code)}/events`));
         eventSource.addEventListener("playback", event => {
+            if (attempt !== connectionAttempt) return;
             try {
                 applyState(JSON.parse(event.data)).catch(() => { });
             } catch {
                 setStatus("playbackUnreadable");
             }
         });
-        eventSource.onopen = () => setStatus("connectedWaitingVro", { code });
+        eventSource.onopen = () => {
+            if (attempt === connectionAttempt) setStatus("connectedWaitingVro", { code });
+        };
         eventSource.onerror = () => {
+            if (attempt !== connectionAttempt) return;
             closeConnection();
             setStatus("connectionInterrupted", { code });
             reconnectTimer = setTimeout(() => connect(code), 2000);
@@ -994,6 +1073,7 @@
     sessionCodeInput.addEventListener("input", () => {
         sessionCodeInput.value = normalizeCode(sessionCodeInput.value);
         if (sessionCodeInput.value.length === 6) connect(sessionCodeInput.value);
+        else showEnterRinkId();
     });
 
     function updatePanelTypeLabel() {
@@ -1158,15 +1238,18 @@
         const percent = Math.max(0, Math.min(100, Math.round(Number(value) || 0)));
         volumeInput.value = String(percent);
         video.volume = percent / 100;
+        syncVideoAudio();
         localStorage.setItem("ReVueRemoteVolume", String(video.volume));
+        updateTestToneOutput();
         activateAudio(activateSound);
     }
 
     function setMuted(muted, activateSound = false) {
         muteInput.checked = !!muted;
-        video.muted = !!muted;
+        syncVideoAudio();
         if (activateSound) autoplayMutedByBrowser = false;
         localStorage.setItem("ReVueRemoteMuted", muted ? "true" : "false");
+        updateTestToneOutput();
         activateAudio(activateSound);
         if (activateSound && judgingReviewActive && isJudgingReview()) {
             setStatusText(judgingStatusText());
@@ -1242,10 +1325,46 @@
         requestAnimationFrame(animatePassiveUi);
     };
     requestAnimationFrame(animatePassiveUi);
+    function fitPageToViewport() {
+        fitFrameRequest = 0;
+        const bodyStyle = getComputedStyle(document.body);
+        const horizontalPadding = parseFloat(bodyStyle.paddingLeft) + parseFloat(bodyStyle.paddingRight);
+        const verticalPadding = parseFloat(bodyStyle.paddingTop) + parseFloat(bodyStyle.paddingBottom);
+        const visualViewport = window.visualViewport;
+        const useVisualViewport = visualViewport && Math.abs(visualViewport.scale - 1) < 0.01;
+        const viewportWidth = useVisualViewport ? visualViewport.width : window.innerWidth;
+        const viewportHeight = useVisualViewport ? visualViewport.height : window.innerHeight;
+        const availableWidth = Math.max(1, viewportWidth - horizontalPadding - 4);
+        const availableHeight = Math.max(1, viewportHeight - verticalPadding - 4);
+
+        // Keep the responsive layout at its normal width, then scale the entire
+        // page only when its full content would exceed the visible viewport.
+        shell.style.width = `${Math.min(1400, availableWidth)}px`;
+        const contentWidth = Math.max(shell.offsetWidth, shell.scrollWidth);
+        const contentHeight = Math.max(shell.offsetHeight, shell.scrollHeight);
+        const scale = Math.min(1, availableWidth / contentWidth, availableHeight / contentHeight);
+        pageFitScale = scale;
+        shell.style.transform = `scale(${scale})`;
+        pageFrame.style.width = `${contentWidth * scale}px`;
+        pageFrame.style.height = `${contentHeight * scale}px`;
+        document.body.style.height = `${viewportHeight}px`;
+        document.body.classList.add("fitViewport");
+        drawTimeline();
+    }
+
+    function scheduleViewportFit() {
+        if (!fitFrameRequest) fitFrameRequest = requestAnimationFrame(fitPageToViewport);
+    }
+
+    if (window.ResizeObserver) new ResizeObserver(scheduleViewportFit).observe(shell);
+    scheduleViewportFit();
+    window.addEventListener("load", scheduleViewportFit);
     window.addEventListener("resize", () => {
+        scheduleViewportFit();
         applyZoomState(latestState);
         drawTimeline();
     });
+    window.visualViewport?.addEventListener("resize", scheduleViewportFit);
 
     function resumeExpectedPlayback() {
         if (document.hidden) return;

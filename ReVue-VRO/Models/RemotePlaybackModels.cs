@@ -14,6 +14,11 @@ public class RemoteConnectionRequest
     public string SessionCode { get; set; } = "";
 }
 
+public sealed class RemoteRinkIdRequest
+{
+    public string SessionCode { get; set; } = "";
+}
+
 public sealed class RemoteVideoFolderUploadRequest : RemoteConnectionRequest
 {
     public string FolderPath { get; set; } = "";
@@ -42,6 +47,7 @@ public sealed class RemoteVideoLibraryItem : RemoteVideoDescriptor
     public bool IsSelected { get; set; }
     public string DownloadJobId { get; set; } = "";
     public double ProgressPercent { get; set; }
+    public string DownloadError { get; set; } = "";
 }
 
 public sealed class UploadedLocalVideoResult
@@ -52,6 +58,9 @@ public sealed class UploadedLocalVideoResult
 
 public sealed class RemotePlaybackCommand
 {
+    public string OperatorInstanceId { get; set; } = "";
+    public long OperatorGeneration { get; set; }
+    public long OperatorSequence { get; set; }
     public string VideoId { get; set; } = "";
     public double PositionSeconds { get; set; }
     public double TimelinePositionSeconds { get; set; }

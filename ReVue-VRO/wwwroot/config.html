@@ -728,17 +728,9 @@
                         <div class="row hiddenRow" id="RemoteHostUrlRow">
                             <div class="labelBlock">
                                 <label for="RemoteHostUrl" data-i18n="remoteHostUrl">Remote Host URL</label>
-                                <div class="help" data-i18n="remoteHostUrlHelp">Base URL of the ReVue-Remote web app.</div>
+                                <div class="help" data-i18n="remoteHostUrlHelp">Base URL of the ReVue-Remote web app. Enter the Rink ID on the main screen.</div>
                             </div>
                             <input id="RemoteHostUrl" name="RemoteHostUrl" class="fieldWidthMedium" type="text" spellcheck="false" placeholder="https://remote.example.com" />
-                        </div>
-
-                        <div class="row hiddenRow" id="RemoteSessionCodeRow">
-                            <div class="labelBlock">
-                                <label for="RemoteSessionCode" data-i18n="remoteSessionCode">Rink ID</label>
-                                <div class="help" data-i18n="remoteSessionCodeHelp">Exactly six letters or digits, for example AB1234. This identifies the hosted video library for the rink.</div>
-                            </div>
-                            <input id="RemoteSessionCode" name="RemoteSessionCode" class="fieldWidthSmall" type="text" maxlength="6" spellcheck="false" placeholder="AB1234" />
                         </div>
 
                         <div class="row hiddenRow" id="RemoteVideoCacheMaximumFilesRow">
@@ -894,7 +886,6 @@
             "DemoMode",
             "RtspUrl",
             "RemoteHostUrl",
-            "RemoteSessionCode",
             "RemoteVideoCacheMaximumFiles",
             "RemoteVideoCacheExpirationHours",
             "SourceFps",
@@ -942,11 +933,9 @@
         const rtspUrlRow = document.getElementById("RtspUrlRow");
         const rtspTransportProtocolRow = document.getElementById("RtspTransportProtocolRow");
         const remoteHostUrlRow = document.getElementById("RemoteHostUrlRow");
-        const remoteSessionCodeRow = document.getElementById("RemoteSessionCodeRow");
         const remoteVideoCacheMaximumFilesRow = document.getElementById("RemoteVideoCacheMaximumFilesRow");
         const remoteVideoCacheExpirationHoursRow = document.getElementById("RemoteVideoCacheExpirationHoursRow");
         const remoteHostUrlInput = document.getElementById("RemoteHostUrl");
-        const remoteSessionCodeInput = document.getElementById("RemoteSessionCode");
         const remoteVideoCacheMaximumFilesInput = document.getElementById("RemoteVideoCacheMaximumFiles");
         const remoteVideoCacheExpirationHoursInput = document.getElementById("RemoteVideoCacheExpirationHours");
         const saveVideosInput = document.getElementById("SaveVideos");
@@ -1170,13 +1159,6 @@
             if (normalized === "demo") return "Demo";
             if (normalized === "rtsp") return "RTSP";
             return demoModeFallback ? "Demo" : "RTSP";
-        }
-
-        function normalizeRemoteSessionCode(value) {
-            return String(value ?? "")
-                .toUpperCase()
-                .replace(/[^A-Z0-9]/g, "")
-                .slice(0, 6);
         }
 
         function normalizeEventIdValue(value) {
@@ -1510,7 +1492,6 @@
 
             for (const row of [
                 remoteHostUrlRow,
-                remoteSessionCodeRow,
                 remoteVideoCacheMaximumFilesRow,
                 remoteVideoCacheExpirationHoursRow
             ]) {
@@ -1518,7 +1499,6 @@
             }
 
             remoteHostUrlInput.disabled = !remoteModeOn;
-            remoteSessionCodeInput.disabled = !remoteModeOn;
             remoteVideoCacheMaximumFilesInput.disabled = !remoteModeOn;
             remoteVideoCacheExpirationHoursInput.disabled = !remoteModeOn;
 
@@ -1581,9 +1561,6 @@
                     value = normalizeVideoSourceMode(value, !!config.DemoMode);
                 }
 
-                if (fieldName === "RemoteSessionCode") {
-                    value = normalizeRemoteSessionCode(value);
-                }
 
                 if (booleanFields.includes(fieldName)) {
                     input.checked = !!value;
@@ -1657,10 +1634,6 @@
                     input.value = value;
                 }
 
-                if (fieldName === "RemoteSessionCode") {
-                    value = normalizeRemoteSessionCode(value);
-                    input.value = value;
-                }
 
                 config[fieldName] = value;
             }
@@ -1671,26 +1644,18 @@
             }
 
             config.Language = currentLanguage;
+            delete config.RemoteSessionCode;
             return removeOrphanedSettings(config);
         }
 
-        function getRemoteConnectionPayload() {
+        function validateRemoteHostUrl() {
             const hostUrl = String(remoteHostUrlInput.value || "").trim().replace(/\/+$/, "");
-            const sessionCode = normalizeRemoteSessionCode(remoteSessionCodeInput.value);
             remoteHostUrlInput.value = hostUrl;
-            remoteSessionCodeInput.value = sessionCode;
 
-            if (!/^https?:\/\//i.test(hostUrl)) {
-                throw new Error("Remote Host URL must begin with http:// or https://.");
-            }
-            if (!/^[A-Z0-9]{6}$/.test(sessionCode)) {
-                throw new Error("Rink ID must contain exactly six letters or digits.");
-            }
-
-            return {
-                hostUrl,
-                sessionCode
-            };
+            let parsed;
+            try { parsed = new URL(hostUrl); } catch { }
+            if (!parsed?.hostname || !["http:", "https:"].includes(parsed.protocol))
+                throw new Error("Remote Host URL must be a valid http:// or https:// URL.");
         }
 
         function getHostFromDatabaseLocation(value) {
@@ -1937,7 +1902,7 @@
             setStatus("savingSettings", "", true);
 
             if (normalizeVideoSourceMode(videoSourceModeInput.value, false) === "Remote") {
-                getRemoteConnectionPayload();
+                validateRemoteHostUrl();
             }
 
             const cssLink = normalizeCssLinkValue(cssLinkInput?.value);
@@ -2071,10 +2036,6 @@
 
         rtspUrlInput.addEventListener("blur", () => {
             pollRtspHostPing();
-        });
-
-        remoteSessionCodeInput.addEventListener("input", () => {
-            remoteSessionCodeInput.value = normalizeRemoteSessionCode(remoteSessionCodeInput.value);
         });
 
         form.addEventListener("submit", (event) => {

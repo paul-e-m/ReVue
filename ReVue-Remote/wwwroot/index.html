@@ -4,17 +4,12 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>ReVue-Remote</title>
-    <link rel="stylesheet" href="styles.css?v=20260929-compact-role-selector" />
+    <link rel="stylesheet" href="styles.css?v=20260930-clean-player-layout" />
 </head>
 <body>
+    <div id="pageFrame" class="pageFrame">
     <main class="shell">
-        <header class="topBar">
-            <div class="brandBlock">
-                <div class="brand">ReVue-Remote</div>
-                <div id="playbackStatus" class="playbackStatus" data-i18n="waitingForRinkId">Waiting for a Rink ID.</div>
-            </div>
-
-            <form id="controls" class="headerControls" autocomplete="off">
+        <form id="controls" class="playerControls" autocomplete="off">
                 <div id="reviewIndicator" class="reviewIndicator hidden" role="status" aria-live="polite">
                     <span class="reviewIndicatorDot" aria-hidden="true"></span>
                     <span id="reviewIndicatorText"></span>
@@ -46,6 +41,7 @@
                     <input id="panelType" name="panelType" type="hidden" value="technical" />
                     <button id="panelTypeButton" class="panelTypeButton" type="button" aria-haspopup="listbox" aria-expanded="false">
                         <span id="panelTypeLabel">Technical</span>
+                        <span class="panelTypeSizer" aria-hidden="true" data-i18n="technicalPanel">Technical</span>
                         <span class="panelChevron" aria-hidden="true">⌄</span>
                     </button>
                     <div id="panelTypeMenu" class="panelTypeMenu hidden" role="listbox" aria-label="Viewer panel type" data-i18n-aria="viewerRole">
@@ -67,14 +63,33 @@
                         <button type="button" role="option" data-language="fr">Français</button>
                     </div>
                 </div>
-            </form>
-        </header>
+        </form>
 
         <section class="viewer" aria-label="Passive remote replay player" data-i18n-aria="remotePlayer">
             <video id="video" playsinline preload="auto" disablepictureinpicture></video>
-            <div id="emptyState" class="emptyState waitingForVideo">
-                <img class="emptyStateWatermark" src="img/logo.png" alt="" aria-hidden="true" draggable="false" />
-                <span id="emptyStateMessage" class="emptyStateMessage" data-i18n="enterRinkId">Enter Rink ID</span>
+            <div id="playbackStatus" class="playbackStatus" data-i18n="waitingForRinkId">Waiting for a Rink ID.</div>
+            <div id="emptyState" class="emptyState enterRinkId">
+                <div class="testPattern">
+                    <span class="testPatternLabel" data-i18n="noSignal">NO SIGNAL</span>
+                </div>
+                <div class="snow" aria-hidden="true"></div>
+                <span id="emptyStateMessage" class="emptyStateMessage" data-i18n="enterRinkId">Welcome to ReVue-Remote
+Enter Rink ID</span>
+                <div id="audioTestFeedback" class="audioTestFeedback">
+                    <svg class="audioTestWave" viewBox="0 0 72 24" aria-hidden="true">
+                        <path d="M0 12 C3 2 9 2 12 12 S21 22 24 12 S33 2 36 12 S45 22 48 12 S57 2 60 12 S69 22 72 12 S81 2 84 12 S93 22 96 12" />
+                    </svg>
+                    <span id="audioTestLevel" class="audioTestLevel" role="status" aria-live="polite">
+                        <span id="audioTestLevelText"></span>
+                    </span>
+                </div>
+                <button id="audioTestButton" class="audioTestButton" type="button" aria-pressed="false">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M3 9v6h4l5 4V5L7 9H3Z" />
+                        <path d="M15 9a5 5 0 0 1 0 6M18 6a9 9 0 0 1 0 12" />
+                    </svg>
+                    <span id="audioTestLabel" data-i18n="playTestTone">Sound check</span>
+                </button>
             </div>
             <div id="judgingTransport" class="judgingTransport hidden">
                 <button id="refereeStopwatch" class="refereeStopwatch hidden" type="button" title="Set stopwatch zero" aria-label="Set stopwatch zero" aria-pressed="false" data-i18n-title="setStopwatchZero" data-i18n-aria="setStopwatchZero">
@@ -87,7 +102,7 @@
             </div>
         </section>
 
-        <section id="timelineSection" class="timelineSection" aria-label="Video timeline" data-i18n-aria="videoTimeline">
+        <section id="timelineSection" class="timelineSection" aria-label="Video timeline" data-i18n-aria="videoTimeline" hidden>
             <div id="timelineControlRow" class="timelineControlRow">
                 <div id="refereeTimer" class="refereeTimer hidden" aria-live="off"></div>
                 <div id="replayProgramTimeIndicator" class="replayProgramTimeIndicator hidden" aria-live="off">00:00:00</div>
@@ -107,7 +122,8 @@
             </div>
         </section>
     </main>
+    </div>
 
-    <script src="app.js?v=20260929-enter-rink-id"></script>
+    <script src="app.js?v=20260930-welcome-with-rink-id"></script>
 </body>
 </html>

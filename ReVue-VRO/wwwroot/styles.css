@@ -961,6 +961,40 @@ body.replayActive .clipBtn.isSelectedReplay.isReview .clipBtnCode {
     pointer-events: auto;
 }
 
+.remoteRinkIdField {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.remoteRinkIdLabel {
+    white-space: nowrap;
+    color: #d7dbe1;
+    font: 600 14px/1 "Segoe UI", Arial, sans-serif;
+}
+
+.remoteRinkIdInput {
+    box-sizing: border-box;
+    width: 100px;
+    height: 34px;
+    padding: 0 8px;
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 6px;
+    background: #3f4650;
+    color: #e7eefc;
+    font: 600 14px/1 "Consolas", monospace;
+    text-align: center;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.remoteRinkIdInput::placeholder { color: #aeb7c5; }
+.remoteRinkIdInput:disabled { opacity: 0.55; cursor: default; }
+.remoteRinkIdInput:focus {
+    border-color: #b8c7ff;
+    box-shadow: 0 0 0 2px rgba(184,199,255,0.24) !important;
+}
+
 .remoteVideoSelectButton {
     min-width: 118px;
     height: 34px;
@@ -1874,6 +1908,13 @@ body.replayActive .clipBtn.isSelectedReplay.isReview .clipBtnCode {
 .remoteVideoCloseButton:hover { color: #000; text-decoration: underline; }
 .remoteVideoLibraryList { display: grid; }
 
+.remoteVideoLibraryMessage {
+    margin: 0;
+    padding: 22px 8px 10px;
+    color: #252b36;
+    font: 600 15px/1.45 "Segoe UI", Arial, sans-serif;
+}
+
 .remoteVideoLibraryRow {
     display: grid;
     grid-template-columns: 22px minmax(0, 1fr) auto;
@@ -1929,11 +1970,15 @@ body.replayActive .clipBtn.isSelectedReplay.isReview .clipBtnCode {
     margin-top: 2px;
     color: #687080;
     font: 500 11px/1.2 "Segoe UI", Arial, sans-serif;
+    overflow-wrap: anywhere;
 }
 
 .remoteVideoLibraryRow.downloaded .remoteVideoState { color: #187a43; }
 .remoteVideoLibraryRow.downloading .remoteVideoState,
 .remoteVideoLibraryRow.queued .remoteVideoState { color: #a92828; }
+.remoteVideoLibraryRow.failed .remoteVideoState { color: #b42318; }
+.remoteVideoLibraryRow.failed .remoteVideoStateIcon { border-color: #b42318; background: #b42318; }
+.remoteVideoLibraryRow.failed .remoteVideoStateIcon::before { content: "!"; }
 
 .remoteVideoLibraryActions {
     display: flex;

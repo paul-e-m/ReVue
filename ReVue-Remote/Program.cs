@@ -24,6 +24,7 @@ builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = 
 builder.Services.Configure<FormOptions>(options => options.MultipartBodyLengthLimit = long.MaxValue);
 builder.Services.AddSingleton<VideoCanonicalizer>();
 builder.Services.AddSingleton<RemoteSessionStore>();
+builder.Services.AddHostedService<RemotePlaybackLeaseService>();
 builder.Services.AddSingleton<VideoProcessingService>();
 builder.Services.AddHostedService<VideoProcessingService>(
     services => services.GetRequiredService<VideoProcessingService>());

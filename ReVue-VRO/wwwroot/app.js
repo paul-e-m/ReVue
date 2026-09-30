@@ -1,4 +1,4 @@
-import { el, BTN_SIZE, clamp, apiGet, apiPost } from "./app-utils.js";
+import { el, BTN_SIZE, clamp, apiGet, apiPost, apiDelete } from "./app-utils.js";
 import { TimelineRenderer } from "./app-timeline.js";
 import { ReplayController } from "./app-replay.js";
 import { ShortcutKeysController } from "./app-shortcut-keys.js";
@@ -89,6 +89,8 @@ export class ReVueVROApp {
             recordManualHalfwayTitle: el("recordManualHalfwayTitle"),
             recordManualHalfwaySelect: el("recordManualHalfwaySelect"),
             recordRemoteVideoCol: el("recordRemoteVideoCol"),
+            recordRemoteRinkIdLabel: document.querySelector('label[for="recordRemoteRinkId"]'),
+            recordRemoteRinkId: el("recordRemoteRinkId"),
             recordRemoteVideoSelect: el("recordRemoteVideoSelect"),
             remoteVideoModal: el("remoteVideoModal"),
             remoteVideoClose: el("remoteVideoClose"),
@@ -160,10 +162,20 @@ export class ReVueVROApp {
         this.isDeletePending = false;
         this.isSavingLanguage = false;
         this.isSavingRemoteVideoSelection = false;
+        this.isSavingRemoteRinkId = false;
+        this.remoteRinkIdUserEdited = false;
+        this.remoteRinkIdSaveTimer = null;
         this.remoteLocalVideos = [];
         this.remoteVideoLibrary = [];
+        this.remoteVideoLibraryError = "";
+        this.remoteVideoLibraryRenderSignature = "";
+        this.remoteVideoActionPointerDown = false;
+        this.remoteVideoLibraryRenderDeferred = false;
         this.selectedRemoteVideoFileName = "";
         this.remoteDownloadPollTimer = null;
+        this.remoteVideoRefreshVersion = 0;
+        this.remoteVideoRefreshInFlight = 0;
+        this.remoteVideoActionPending = new Set();
         this.remoteVideoRecordEnableAtMs = 0;
         this.remoteVideoRecordEnableTimer = null;
         this.lastStatusRenderSignature = "";
@@ -174,7 +186,7 @@ export class ReVueVROApp {
         // Cache appconfig early so later interactions do not need an extra fetch.
         this.appConfig = null;
         this.skateCanadaApiBaseUrl = "https://sc-css-public-api-cmh9d3htgxfpdkb7.canadacentral-01.azurewebsites.net";
-        this.appVersion = "v1.1.0";
+        this.appVersion = "v2.0.0-beta";
         this.currentLanguage = "en";
         this.i18n = window.INDEX_I18N || {};
         this.buttonImageUrlCache = new Map();
@@ -290,12 +302,23 @@ export class ReVueVROApp {
             this.updateProgramTimerUI();
         }, 60);
 
+        // Recording has no replay-video timeupdate event, so provide its
+        // position once per second. Replay already has that heartbeat in
+        // bindRemotePlaybackSync; publishing both would make Remote clients
+        // reapply the same playback state unnecessarily.
+        setInterval(() => {
+            if (!this.isRemoteSourceMode()) return;
+            if (this.state?.mode !== "record" || !this.state?.isRecording) return;
+            this.scheduleRemotePlaybackSync(0);
+        }, 1000);
+
         this.replay.startRafLoop();
     }
 
     async warmAppConfig() {
         try {
             this.appConfig = await apiGet("/api/appconfig");
+            this.syncRemoteRinkIdFromConfig();
         } catch {
             // Keep going. The app can still fetch config later if needed.
         }
@@ -316,11 +339,32 @@ export class ReVueVROApp {
     async refreshRemoteVideoSelector() {
         const button = this.refs.recordRemoteVideoSelect;
         if (!button) return;
-        let payload = { videos: [] };
+        if (!this.isRemoteSourceMode() || !this.hasValidRemoteRinkId()) {
+            ++this.remoteVideoRefreshVersion;
+            this.remoteVideoLibrary = [];
+            this.remoteVideoLibraryError = "";
+            this.selectedRemoteVideoFileName = "";
+            this.renderRemoteVideoLibrary();
+            this.syncRemoteVideoSelector();
+            this.updateSessionInfoOverlay();
+            return;
+        }
+        const version = ++this.remoteVideoRefreshVersion;
+        this.remoteVideoRefreshInFlight++;
+        let payload;
         try {
             payload = await apiGet(`/api/remote/library?ts=${Date.now()}`);
-        } catch {
+        } catch (error) {
+            if (version !== this.remoteVideoRefreshVersion) return;
+            this.remoteVideoLibraryError = error?.status === 404 ? "unknownRinkId" : "unavailable";
+            this.renderRemoteVideoLibrary();
+            // A transient library failure must not erase a visible download job.
+            return;
+        } finally {
+            this.remoteVideoRefreshInFlight--;
         }
+        if (version !== this.remoteVideoRefreshVersion) return;
+        this.remoteVideoLibraryError = "";
         this.remoteVideoLibrary = Array.isArray(payload?.videos) ? payload.videos : [];
         const selected = this.remoteVideoLibrary.find(video => video.isSelected ?? video.IsSelected);
         this.selectedRemoteVideoFileName = selected
@@ -336,16 +380,40 @@ export class ReVueVROApp {
     renderRemoteVideoLibrary() {
         const list = this.refs.remoteVideoLibraryList;
         if (!list) return;
-        list.replaceChildren();
-        if (!this.remoteVideoLibrary.length) {
-            list.textContent = "No video recordings are available for this Rink ID.";
+        // Replacing a button between pointerdown and click discards the click.
+        if (this.remoteVideoActionPointerDown) {
+            this.remoteVideoLibraryRenderDeferred = true;
             return;
+        }
+        const signature = JSON.stringify([
+            this.currentLanguage,
+            this.normalizeRemoteRinkId(this.appConfig?.RemoteSessionCode),
+            this.remoteVideoLibraryError,
+            this.remoteVideoLibrary,
+            [...this.remoteVideoActionPending].sort()
+        ]);
+        // Polling may return identical data every 700 ms; keep the button nodes stable.
+        if (signature === this.remoteVideoLibraryRenderSignature) return;
+        this.remoteVideoLibraryRenderSignature = signature;
+        list.replaceChildren();
+        if (this.remoteVideoLibraryError || !this.remoteVideoLibrary.length) {
+            const key = this.remoteVideoLibraryError === "unknownRinkId"
+                ? "remoteVideoUnknownRinkId"
+                : this.remoteVideoLibraryError
+                    ? "remoteVideoLibraryUnavailable"
+                    : "remoteVideoNoRecordings";
+            const message = document.createElement("p");
+            message.className = "remoteVideoLibraryMessage";
+            message.textContent = this.t(key).replace("{rinkId}", this.normalizeRemoteRinkId(this.appConfig?.RemoteSessionCode));
+            list.appendChild(message);
+            if (this.remoteVideoLibraryError === "unknownRinkId" || !this.remoteVideoLibrary.length) return;
         }
         for (const video of this.remoteVideoLibrary) {
             const id = String(video.id || video.Id || "");
             const status = String(video.status || video.Status || "available").toLowerCase();
             const isSelected = !!(video.isSelected ?? video.IsSelected);
             const progressPercent = Math.max(0, Math.min(100, Number(video.progressPercent || video.ProgressPercent || 0)));
+            const downloadError = String(video.downloadError || video.DownloadError || "").trim();
             const row = document.createElement("div");
             row.className = `remoteVideoLibraryRow ${status}${isSelected ? " selected" : ""}`;
 
@@ -369,7 +437,10 @@ export class ReVueVROApp {
                         ? `Downloading ${Math.round(progressPercent)}%`
                         : status === "queued"
                             ? "Waiting to download"
+                            : status === "failed"
+                                ? `Download failed${downloadError ? `: ${downloadError}` : ""}`
                             : "Available";
+            if (downloadError) state.title = downloadError;
             details.append(name, state);
 
             const actions = document.createElement("div"); actions.className = "remoteVideoLibraryActions";
@@ -390,8 +461,8 @@ export class ReVueVROApp {
                 const primary = document.createElement("button");
                 primary.type = "button";
                 primary.className = "remoteVideoAction primary";
-                primary.textContent = isSelected ? "Selected" : status === "downloaded" ? "Select" : "Download";
-                primary.disabled = isSelected;
+                primary.textContent = isSelected ? "Selected" : status === "downloaded" ? "Select" : this.remoteVideoActionPending.has(id) ? "Starting..." : status === "failed" ? "Retry" : "Download";
+                primary.disabled = isSelected || this.remoteVideoActionPending.has(id);
                 if (!isSelected) primary.dataset[status === "downloaded" ? "selectVideo" : "downloadVideo"] = id;
                 actions.appendChild(primary);
             }
@@ -403,7 +474,11 @@ export class ReVueVROApp {
     openRemoteVideoLibrary() {
         this.refs.remoteVideoModal?.classList.remove("hidden");
         this.refreshRemoteVideoSelector().catch(() => { });
-        if (this.remoteDownloadPollTimer === null) this.remoteDownloadPollTimer = window.setInterval(() => this.refreshRemoteVideoSelector().catch(() => { }), 700);
+        if (this.remoteDownloadPollTimer === null) this.remoteDownloadPollTimer = window.setInterval(() => {
+            if (this.remoteVideoRefreshInFlight === 0 && this.remoteVideoLibraryError !== "unknownRinkId") {
+                this.refreshRemoteVideoSelector().catch(() => { });
+            }
+        }, 700);
     }
 
     closeRemoteVideoLibrary() {
@@ -418,11 +493,65 @@ export class ReVueVROApp {
             !!this.isStopPending || !!this.state?.isArming || !!this.state?.isRecording;
         const waitingForRemoteCache = remoteMode && this.isRemoteVideoCacheDelayActive();
         this.refs.recordRemoteVideoCol?.classList.toggle("hidden", !remoteMode);
+        this.syncRemoteRinkIdFromConfig();
+        if (this.refs.recordRemoteRinkId) {
+            this.refs.recordRemoteRinkId.disabled = !remoteMode || busy || this.isSavingRemoteRinkId;
+        }
         if (this.refs.recordRemoteVideoSelect) {
-            this.refs.recordRemoteVideoSelect.disabled = !remoteMode || busy;
+            this.refs.recordRemoteVideoSelect.disabled = !remoteMode || busy || this.isSavingRemoteRinkId || !this.hasValidRemoteRinkId();
         }
         if (remoteMode && this.refs.mainBtn && this.state?.mode === "record" && !this.state?.isRecording) {
-            this.refs.mainBtn.disabled = busy || waitingForRemoteCache || !this.appConfig?.RemoteVideoId;
+            this.refs.mainBtn.disabled = busy || this.isSavingRemoteRinkId || !this.hasValidRemoteRinkId() ||
+                waitingForRemoteCache || !this.appConfig?.RemoteVideoId;
+        }
+    }
+
+    normalizeRemoteRinkId(value) {
+        return String(value || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
+    }
+
+    syncRemoteRinkIdFromConfig() {
+        const input = this.refs.recordRemoteRinkId;
+        if (!input || this.remoteRinkIdUserEdited || document.activeElement === input) return;
+        input.value = this.normalizeRemoteRinkId(this.appConfig?.RemoteSessionCode);
+    }
+
+    hasValidRemoteRinkId() {
+        const entered = this.normalizeRemoteRinkId(this.refs.recordRemoteRinkId?.value);
+        const saved = this.normalizeRemoteRinkId(this.appConfig?.RemoteSessionCode);
+        return /^[A-Z0-9]{6}$/.test(entered) && entered === saved;
+    }
+
+    async saveRemoteRinkId() {
+        const input = this.refs.recordRemoteRinkId;
+        if (!input || !this.isRemoteSourceMode() || this.isSavingRemoteRinkId) return;
+        const code = this.normalizeRemoteRinkId(input.value);
+        if (code && !/^[A-Z0-9]{6}$/.test(code)) return;
+        if (code === this.normalizeRemoteRinkId(this.appConfig?.RemoteSessionCode)) {
+            this.remoteRinkIdUserEdited = false;
+            this.syncRemoteVideoSelector();
+            await this.refreshRemoteVideoSelector();
+            return;
+        }
+
+        this.isSavingRemoteRinkId = true;
+        this.syncRemoteVideoSelector();
+        try {
+            const saved = await apiPost("/api/remote/rink-id", { SessionCode: code });
+            this.appConfig = saved;
+            this.remoteRinkIdUserEdited = false;
+            this.remoteVideoLibrary = [];
+            this.remoteVideoLibraryError = "";
+            this.selectedRemoteVideoFileName = "";
+            this.remoteVideoRecordEnableAtMs = 0;
+            if (this.remoteVideoRecordEnableTimer !== null) clearTimeout(this.remoteVideoRecordEnableTimer);
+            this.remoteVideoRecordEnableTimer = null;
+            this.updateSessionInfoOverlay();
+            await this.refreshRemoteVideoSelector();
+            this.refreshLiveUrl().catch(err => this.showError(err, { fallbackTitle: "Video preview could not refresh" }));
+        } finally {
+            this.isSavingRemoteRinkId = false;
+            this.syncRemoteVideoSelector();
         }
     }
 
@@ -1469,6 +1598,8 @@ export class ReVueVROApp {
         this.setText(this.refs.programTimerPrefix, this.t("programTimerPrefix"));
         this.setText(this.refs.recordRemoteVideoSelect, this.t("remoteVideoSelectPlaceholder"));
         this.setAriaLabel(this.refs.recordRemoteVideoSelect, this.t("remoteVideoSelectAria"));
+        this.setText(this.refs.recordRemoteRinkIdLabel, this.t("remoteRinkIdLabel"));
+        this.setAriaLabel(this.refs.recordRemoteRinkId, this.t("remoteRinkIdLabel"));
         this.setText(this.refs.recordTimerValue, this.formatRecordingTimerDisplay(this.currentRecordSeconds()));
         this.setText(this.refs.programTimerDisplay, this.formatProgramTimerDisplay(this.currentProgramTimerElapsedSeconds?.() ?? 0));
         this.updateProgramStartButtons();
@@ -1607,6 +1738,9 @@ export class ReVueVROApp {
 
     isSuppressedFocusTarget(target) {
         if (!(target instanceof HTMLElement)) return false;
+        // Editable text fields must retain focus; otherwise the global focusin
+        // and pointerup handlers make the Rink ID impossible to change.
+        if (target instanceof HTMLInputElement && target.type === "text") return false;
         return target.matches("button, input, video");
     }
 
@@ -1652,16 +1786,72 @@ export class ReVueVROApp {
             });
         }
         this.refs.recordRemoteVideoSelect?.addEventListener("click", () => this.openRemoteVideoLibrary());
+        this.refs.recordRemoteRinkId?.addEventListener("focus", event => event.target.select());
+        this.refs.recordRemoteRinkId?.addEventListener("click", event => event.target.select());
+        this.refs.recordRemoteRinkId?.addEventListener("input", () => {
+            const input = this.refs.recordRemoteRinkId;
+            input.value = this.normalizeRemoteRinkId(input.value);
+            this.remoteRinkIdUserEdited = true;
+            if (this.remoteRinkIdSaveTimer !== null) clearTimeout(this.remoteRinkIdSaveTimer);
+            this.remoteRinkIdSaveTimer = null;
+            this.syncRemoteVideoSelector();
+            if (!this.hasValidRemoteRinkId()) {
+                ++this.remoteVideoRefreshVersion;
+                this.remoteVideoLibrary = [];
+                this.remoteVideoLibraryError = "";
+                this.selectedRemoteVideoFileName = "";
+                this.updateSessionInfoOverlay();
+            } else {
+                this.refreshRemoteVideoSelector().catch(() => { });
+            }
+            if (input.value.length === 0 || input.value.length === 6) {
+                this.remoteRinkIdSaveTimer = window.setTimeout(() => {
+                    this.remoteRinkIdSaveTimer = null;
+                    this.saveRemoteRinkId().catch(err => this.showError(err, { fallbackTitle: this.t("remoteRinkIdSaveErrorTitle") }));
+                }, 300);
+            }
+        });
+        this.refs.recordRemoteRinkId?.addEventListener("keydown", event => {
+            if (event.key !== "Enter") return;
+            event.preventDefault();
+            if (this.remoteRinkIdSaveTimer !== null) clearTimeout(this.remoteRinkIdSaveTimer);
+            this.remoteRinkIdSaveTimer = null;
+            this.saveRemoteRinkId().catch(err => this.showError(err, { fallbackTitle: this.t("remoteRinkIdSaveErrorTitle") }));
+        });
         this.refs.remoteVideoClose?.addEventListener("click", () => this.closeRemoteVideoLibrary());
+        this.refs.remoteVideoLibraryList?.addEventListener("pointerdown", event => {
+            if (event.target.closest?.("button")) this.remoteVideoActionPointerDown = true;
+        });
+        const finishRemoteVideoPointer = () => window.setTimeout(() => {
+            this.remoteVideoActionPointerDown = false;
+            if (this.remoteVideoLibraryRenderDeferred) {
+                this.remoteVideoLibraryRenderDeferred = false;
+                this.renderRemoteVideoLibrary();
+            }
+        }, 0);
+        document.addEventListener("pointerup", finishRemoteVideoPointer);
+        document.addEventListener("pointercancel", finishRemoteVideoPointer);
         this.refs.remoteVideoModal?.addEventListener("click", (event) => {
             if (event.target === this.refs.remoteVideoModal) return this.closeRemoteVideoLibrary();
             const button = event.target.closest?.("button");
-            if (!button) return;
+            if (!button || button.disabled) return;
             const run = async () => {
-                if (button.dataset.downloadVideo) await apiPost(`/api/remote/library/${encodeURIComponent(button.dataset.downloadVideo)}/download`, {});
-                if (button.dataset.selectVideo) await this.selectRemoteVideo(button.dataset.selectVideo);
-                if (button.dataset.cancelJob) await fetch(`/api/remote/downloads/${encodeURIComponent(button.dataset.cancelJob)}`, { method: "DELETE" });
-                await this.refreshRemoteVideoSelector();
+                const videoId = button.dataset.downloadVideo || button.dataset.selectVideo;
+                if (videoId && this.remoteVideoActionPending.has(videoId)) return;
+                if (videoId) this.remoteVideoActionPending.add(videoId);
+                button.disabled = true;
+                if (button.dataset.downloadVideo) button.textContent = "Starting...";
+                try {
+                    if (button.dataset.downloadVideo) await apiPost(`/api/remote/library/${encodeURIComponent(button.dataset.downloadVideo)}/download`, {});
+                    if (button.dataset.selectVideo) await this.selectRemoteVideo(button.dataset.selectVideo);
+                    if (button.dataset.cancelJob) await apiDelete(`/api/remote/downloads/${encodeURIComponent(button.dataset.cancelJob)}`);
+                    await this.refreshRemoteVideoSelector();
+                } finally {
+                    if (videoId) this.remoteVideoActionPending.delete(videoId);
+                    if (button.isConnected) button.disabled = false;
+                    this.remoteVideoLibraryRenderSignature = "";
+                    this.renderRemoteVideoLibrary();
+                }
             };
             run().catch(err => this.showError(err, { fallbackTitle: "Remote video operation failed" }));
         });
@@ -2860,6 +3050,7 @@ export class ReVueVROApp {
                 previousEventId !== this.getOnlineCssEventId(config);
 
             this.appConfig = config;
+            this.syncRemoteRinkIdFromConfig();
             this.syncLanguageFromConfig(config);
             this.syncAutoplaySelectedClipFromConfig(config);
             this.syncManualHalfwayTimingFromConfig(config);
@@ -3607,7 +3798,8 @@ export class ReVueVROApp {
         }
 
         if (this.refs.mainBtn) {
-            const remoteVideoReady = !this.isRemoteSourceMode() || !!this.appConfig?.RemoteVideoId;
+            const remoteVideoReady = !this.isRemoteSourceMode() ||
+                (this.hasValidRemoteRinkId() && !this.isSavingRemoteRinkId && !!this.appConfig?.RemoteVideoId);
             const waitingForRemoteCache = this.isRemoteSourceMode() && this.isRemoteVideoCacheDelayActive();
             this.refs.mainBtn.disabled = this.isStopPending ||
                 (this.state?.mode === "record" && !this.state?.isRecording && (!remoteVideoReady || waitingForRemoteCache));
@@ -3643,10 +3835,13 @@ export class ReVueVROApp {
         const video = this.refs.replayVideo;
         if (!video) return;
 
-        const publishSoon = () => this.scheduleRemotePlaybackSync(30);
-        video.addEventListener("play", publishSoon);
-        video.addEventListener("pause", publishSoon);
-        video.addEventListener("ratechange", publishSoon);
+        // Transport changes must reach Remote immediately. They do not need
+        // the old debounce because the media element has already updated its
+        // paused/rate state when these events are emitted.
+        const publishTransportChange = () => this.scheduleRemotePlaybackSync(0);
+        video.addEventListener("play", publishTransportChange);
+        video.addEventListener("pause", publishTransportChange);
+        video.addEventListener("ratechange", publishTransportChange);
         video.addEventListener("seeked", () => {
             this.remotePlaybackDiscontinuity++;
             this.scheduleRemotePlaybackSync(0);
@@ -3848,7 +4043,9 @@ export class ReVueVROApp {
 
     async startRecording() {
         if (this.isStartPending || this.isStopPending ||
-            (this.isRemoteSourceMode() && this.isRemoteVideoCacheDelayActive())) return;
+            (this.isRemoteSourceMode() &&
+                (this.isRemoteVideoCacheDelayActive() || this.isSavingRemoteRinkId ||
+                    !this.hasValidRemoteRinkId() || !this.appConfig?.RemoteVideoId))) return;
 
         this.clearPendingRecordShortcut();
         this.lastRecordStartRequestPerf = performance.now();

@@ -7,8 +7,8 @@
     <AssemblyTitle>ReVue VRO</AssemblyTitle>
     <Product>ReVue VRO</Product>
     <ApplicationIcon>app.ico</ApplicationIcon>
-    <Version>1.1.0</Version>
-    <InformationalVersion>1.1.0</InformationalVersion>
+    <Version>2.0.0-beta</Version>
+    <InformationalVersion>2.0.0-beta</InformationalVersion>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>

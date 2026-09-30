@@ -16,6 +16,7 @@ internal static class AppPaths
     public static string LocalVroAppDir => Path.Combine(LocalAppRootDir, VroAppFolderName);
     public static string LocalVroConfigPath => Path.Combine(LocalVroAppDir, "appconfig.json");
     public static string LocalVroRemoteReplayConfigPath => Path.Combine(LocalVroAppDir, RemoteReplayConfigFileName);
+    public static string LocalVroRemotePlaybackOutboxPath => Path.Combine(LocalVroAppDir, "remote-playback-outbox.json");
     public static string LocalVroWebView2UserDataDir => Path.Combine(LocalVroAppDir, "WebView2");
     public static string LocalVroRemoteVideoCacheDir => Path.Combine(LocalVroAppDir, "RemoteVideos");
     public static string LocalMediaMtxConfigPath => Path.Combine(LocalVroAppDir, "mediamtx.yml");

@@ -20,6 +20,7 @@ public sealed partial class RemoteSessionStore
 
     public const long MaximumUploadChunkBytes = 8L * 1024 * 1024;
     public const long MaximumVideoSizeBytes = 10L * 1024 * 1024 * 1024;
+    public static readonly TimeSpan OperatorLeaseDuration = TimeSpan.FromSeconds(10);
 
     public RemoteSessionStore(
         IConfiguration configuration,
@@ -708,6 +709,10 @@ public sealed partial class RemoteSessionStore
             throw new InvalidOperationException("Open clip start position is invalid.");
         if (!double.IsFinite(command.ZoomScale) || !double.IsFinite(command.ZoomOffsetX) || !double.IsFinite(command.ZoomOffsetY))
             throw new InvalidOperationException("Zoom state is invalid.");
+        if (!Guid.TryParseExact(command.OperatorInstanceId, "N", out _))
+            throw new InvalidOperationException("Remote playback publisher identity is invalid.");
+        if (command.OperatorGeneration <= 0 || command.OperatorSequence <= 0)
+            throw new InvalidOperationException("Remote playback publisher sequence is invalid.");
 
         var gate = GetSessionLock(sessionCode);
         PlaybackState next;
@@ -721,14 +726,17 @@ public sealed partial class RemoteSessionStore
                 throw new FileNotFoundException("The selected video does not exist in this Remote session.");
 
             var current = await ReadPlaybackStateNoLockAsync(sessionCode, cancellationToken);
+            if (!IsNewerOperatorCommand(current, command))
+                return current;
             var nextMode = NormalizePlaybackMode(command.Mode);
             var nowUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             var selectionChanged = !string.Equals(current.VideoId, command.VideoId, StringComparison.OrdinalIgnoreCase);
+            var operatorReconnected = string.Equals(current.Mode, "operator-offline", StringComparison.OrdinalIgnoreCase);
             var playbackEnabled = nextMode == "recording"
                 ? true
                 : nextMode == "ready" || selectionChanged
                     ? false
-                    : current.PlaybackEnabled;
+                    : operatorReconnected || current.PlaybackEnabled;
             var normalizedClips = (command.Clips ?? [])
                 .Where(clip => clip.Index > 0 &&
                                double.IsFinite(clip.StartSeconds) &&
@@ -750,6 +758,10 @@ public sealed partial class RemoteSessionStore
             next = new PlaybackState
             {
                 Revision = current.Revision + 1,
+                OperatorInstanceId = command.OperatorInstanceId,
+                OperatorGeneration = command.OperatorGeneration,
+                OperatorSequence = command.OperatorSequence,
+                OperatorLeaseExpiresAtUnixMs = nowUnixMs + (long)OperatorLeaseDuration.TotalMilliseconds,
                 VideoId = command.VideoId,
                 VideoFileName = selectedVideo.FileName,
                 PositionSeconds = command.PositionSeconds,
@@ -790,6 +802,48 @@ public sealed partial class RemoteSessionStore
         return next;
     }
 
+    public async Task ExpireOperatorLeasesAsync(CancellationToken cancellationToken = default)
+    {
+        if (!Directory.Exists(_storageRoot)) return;
+        var expiredStates = new List<(string SessionCode, PlaybackState State)>();
+        foreach (var directory in Directory.EnumerateDirectories(_storageRoot))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var sessionCode = Path.GetFileName(directory);
+            if (!IsValidSessionCode(sessionCode)) continue;
+
+            var gate = GetSessionLock(sessionCode);
+            await gate.WaitAsync(cancellationToken);
+            try
+            {
+                var current = await ReadPlaybackStateNoLockAsync(sessionCode, cancellationToken);
+                var nowUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                var expiresAtUnixMs = current.OperatorLeaseExpiresAtUnixMs > 0
+                    ? current.OperatorLeaseExpiresAtUnixMs
+                    : current.UpdatedAtUnixMs + (long)OperatorLeaseDuration.TotalMilliseconds;
+                if (string.IsNullOrWhiteSpace(current.VideoId) ||
+                    string.Equals(current.Mode, "operator-offline", StringComparison.OrdinalIgnoreCase) ||
+                    expiresAtUnixMs > nowUnixMs)
+                    continue;
+
+                current.Revision++;
+                current.IsPlaying = false;
+                current.PlaybackEnabled = false;
+                current.Mode = "operator-offline";
+                current.UpdatedAtUnixMs = nowUnixMs;
+                await WriteJsonAtomicAsync(GetPlaybackStatePath(sessionCode), current, cancellationToken);
+                expiredStates.Add((sessionCode, current));
+            }
+            finally
+            {
+                gate.Release();
+            }
+        }
+
+        foreach (var expired in expiredStates)
+            Broadcast(expired.SessionCode, expired.State);
+    }
+
     public RemotePlaybackSubscription Subscribe(string sessionCode)
     {
         sessionCode = RequireSessionCode(sessionCode);
@@ -823,6 +877,17 @@ public sealed partial class RemoteSessionStore
 
     private SemaphoreSlim GetSessionLock(string sessionCode)
         => _sessionLocks.GetOrAdd(sessionCode, _ => new SemaphoreSlim(1, 1));
+
+    private static bool IsNewerOperatorCommand(PlaybackState current, PlaybackCommand command)
+    {
+        if (current.OperatorGeneration <= 0) return true;
+        if (command.OperatorGeneration != current.OperatorGeneration)
+            return command.OperatorGeneration > current.OperatorGeneration;
+
+        var sourceComparison = string.CompareOrdinal(command.OperatorInstanceId, current.OperatorInstanceId);
+        if (sourceComparison != 0) return sourceComparison > 0;
+        return command.OperatorSequence > current.OperatorSequence;
+    }
 
     private SemaphoreSlim GetProcessingLock(string sessionCode)
         => _processingLocks.GetOrAdd(sessionCode, _ => new SemaphoreSlim(1, 1));
@@ -1157,6 +1222,9 @@ public static class RemoteUploadStages
 
 public class PlaybackCommand
 {
+    public string OperatorInstanceId { get; set; } = "";
+    public long OperatorGeneration { get; set; }
+    public long OperatorSequence { get; set; }
     public string VideoId { get; set; } = "";
     public string VideoFileName { get; set; } = "";
     public double PositionSeconds { get; set; }
@@ -1188,6 +1256,7 @@ public sealed class PlaybackState : PlaybackCommand
     public long UpdatedAtUnixMs { get; set; }
     public long ReviewStartedAtUnixMs { get; set; }
     public bool PlaybackEnabled { get; set; }
+    public long OperatorLeaseExpiresAtUnixMs { get; set; }
 }
 
 public sealed class ReorderVideosRequest

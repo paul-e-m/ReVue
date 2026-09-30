@@ -100,3 +100,8 @@ export async function apiPost(path, bodyObj) {
   if (!response.ok) throw await createApiError(response);
   return response.json();
 }
+
+export async function apiDelete(path) {
+  const response = await fetchWithAuth(path, { method: "DELETE" });
+  if (!response.ok) throw await createApiError(response);
+}

@@ -844,6 +844,9 @@ public static class AppServer
             MaintainRemoteVideoCache();
             var cfg = LoadConfig();
 
+            if (!RemotePlaybackManager.IsRemoteMode(cfg))
+                remote.StopPublishing();
+
             if (string.Equals(cfg.VideoSourceMode, "Demo", StringComparison.OrdinalIgnoreCase))
             {
                 recorder.Warmup(cfg);
@@ -953,26 +956,27 @@ public static class AppServer
             }
         });
 
-        app.MapPost("/api/appconfig", async (AppConfig cfg, MediaMtxManager mtx, RemotePlaybackManager remote, HttpContext http) =>
+        app.MapPost("/api/appconfig", (AppConfig cfg, MediaMtxManager mtx, RemotePlaybackManager remote) =>
         {
             var previous = LoadConfig();
+            // The Rink ID is edited on the main screen through its own endpoint.
+            // Other settings saves must not restore a stale rink or video selection.
+            cfg.RemoteSessionCode = previous.RemoteSessionCode;
+            cfg.RemoteVideoId = previous.RemoteVideoId;
+            cfg.RemoteVideoLocalPath = previous.RemoteVideoLocalPath;
+            cfg.RemoteVideoSelectedAtUtc = previous.RemoteVideoSelectedAtUtc;
             cfg = NormalizeConfig(MergeConfig(previous, cfg));
-            var remoteVideoChanged = !string.Equals(previous.RemoteVideoId, cfg.RemoteVideoId, StringComparison.OrdinalIgnoreCase);
-            cfg.RemoteVideoSelectedAtUtc = remoteVideoChanged && !string.IsNullOrWhiteSpace(cfg.RemoteVideoId)
-                ? DateTimeOffset.UtcNow
-                : remoteVideoChanged
-                    ? null
-                    : previous.RemoteVideoSelectedAtUtc;
-            if (string.Equals(cfg.VideoSourceMode, "Remote", StringComparison.OrdinalIgnoreCase))
+            var remoteHostChanged = !string.Equals(
+                previous.RemoteHostUrl?.Trim().TrimEnd('/'), cfg.RemoteHostUrl, StringComparison.OrdinalIgnoreCase);
+            if (remoteHostChanged) cfg.RemoteSessionCode = "";
+            var remoteEndpointChanged =
+                remoteHostChanged ||
+                !string.Equals(RemotePlaybackManager.NormalizeSessionCode(previous.RemoteSessionCode), cfg.RemoteSessionCode, StringComparison.Ordinal);
+            if (remoteEndpointChanged)
             {
-                await remote.ValidateSessionAsync(cfg.RemoteHostUrl, cfg.RemoteSessionCode, http.RequestAborted);
-                if (!string.Equals(previous.RemoteHostUrl?.Trim().TrimEnd('/'), cfg.RemoteHostUrl, StringComparison.OrdinalIgnoreCase) ||
-                    !string.Equals(RemotePlaybackManager.NormalizeSessionCode(previous.RemoteSessionCode), cfg.RemoteSessionCode, StringComparison.Ordinal))
-                {
-                    cfg.RemoteVideoId = "";
-                    cfg.RemoteVideoLocalPath = "";
-                    cfg.RemoteVideoSelectedAtUtc = null;
-                }
+                cfg.RemoteVideoId = "";
+                cfg.RemoteVideoLocalPath = "";
+                cfg.RemoteVideoSelectedAtUtc = null;
             }
             SaveConfig(cfg);
             MaintainRemoteVideoCache();
@@ -988,7 +992,33 @@ public static class AppServer
 
             if (string.Equals(cfg.VideoSourceMode, "RTSP", StringComparison.OrdinalIgnoreCase))
                 mtx.Restart(cfg);
+            if (!RemotePlaybackManager.IsRemoteMode(cfg) || remoteEndpointChanged)
+                remote.StopPublishing();
 
+            return Results.Json(cfg, jsonOpts);
+        });
+
+        app.MapPost("/api/remote/rink-id", (RemoteRinkIdRequest request, RemotePlaybackManager remote, SessionManager session) =>
+        {
+            var cfg = LoadConfig();
+            if (!RemotePlaybackManager.IsRemoteMode(cfg))
+                return Results.Problem(detail: "Select Remote source mode first.", statusCode: 400);
+            if (session.IsArming || session.IsRecording || !string.Equals(session.Mode, "record", StringComparison.OrdinalIgnoreCase))
+                return Results.Problem(detail: "The Rink ID can only be changed before recording.", statusCode: 409);
+
+            var code = RemotePlaybackManager.NormalizeSessionCode(request.SessionCode);
+            if (code.Length > 0 && !RemotePlaybackManager.IsValidSessionCode(code))
+                return Results.Problem(detail: "Rink ID must contain exactly six letters or digits.", statusCode: 400);
+            if (string.Equals(cfg.RemoteSessionCode, code, StringComparison.Ordinal))
+                return Results.Json(cfg, jsonOpts);
+
+            // The video library reports an unknown ID when the operator opens it.
+            cfg.RemoteSessionCode = code;
+            cfg.RemoteVideoId = "";
+            cfg.RemoteVideoLocalPath = "";
+            cfg.RemoteVideoSelectedAtUtc = null;
+            SaveConfig(cfg);
+            remote.StopPublishing();
             return Results.Json(cfg, jsonOpts);
         });
 
@@ -1009,10 +1039,10 @@ public static class AppServer
             try
             {
                 var videos = await remote.ListVideosAsync(cfg.RemoteHostUrl, cfg.RemoteSessionCode, http.RequestAborted);
-                var active = downloads.ActiveFor(cfg.RemoteSessionCode).ToDictionary(job => job.VideoId, StringComparer.OrdinalIgnoreCase);
+                var latest = downloads.LatestFor(cfg.RemoteSessionCode);
                 var items = videos.Select(video =>
                 {
-                    active.TryGetValue(video.Id, out var job);
+                    latest.TryGetValue(video.Id, out var job);
                     var path = AppPaths.GetRemoteVideoCachePath(cfg.RemoteSessionCode, video.Id);
                     // Downloads are first written to a .downloading file and
                     // atomically moved here only after the complete response
@@ -1021,15 +1051,21 @@ public static class AppServer
                     // servers do not report a byte count identical to the
                     // upload metadata.
                     var downloaded = File.Exists(path) && new FileInfo(path).Length > 0;
+                    var active = job?.Status is "queued" or "downloading";
+                    var status = active ? job!.Status : downloaded ? "downloaded" : job?.Status == "failed" ? "failed" : "available";
                     return new RemoteVideoLibraryItem
                     {
                         Id = video.Id, FileName = video.FileName, SizeBytes = video.SizeBytes, UploadedAtUtc = video.UploadedAtUtc,
-                        Status = job?.Status ?? (downloaded ? "downloaded" : "available"),
-                        DownloadJobId = job?.JobId ?? "", ProgressPercent = job?.ProgressPercent ?? (downloaded ? 100 : 0),
+                        Status = status, DownloadError = status == "failed" ? job!.Error : "",
+                        DownloadJobId = active ? job!.JobId : "", ProgressPercent = active ? job!.ProgressPercent : downloaded ? 100 : 0,
                         IsSelected = downloaded && string.Equals(cfg.RemoteVideoId, video.Id, StringComparison.OrdinalIgnoreCase)
                     };
                 });
                 return Results.Json(new { sessionCode = cfg.RemoteSessionCode, videos = items }, jsonOpts);
+            }
+            catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
+                return Results.NotFound(new { error = "Rink ID was not found on the Remote host." });
             }
             catch (Exception ex) { return Results.Problem(title: "Could not load Remote video library", detail: ex.Message, statusCode: 502); }
         });
