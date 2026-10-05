@@ -601,7 +601,7 @@ public class SessionManager
             return
                 string.Equals(Mode, "replay", StringComparison.OrdinalIgnoreCase) &&
                 !IsRecording &&
-                Clips.Count > 0;
+                RecordingDurationSeconds.HasValue;
         }
     }
 

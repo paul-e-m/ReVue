@@ -81,6 +81,7 @@ export class ReVueVROApp {
             replayShortcutHint: el("replayShortcutHint"),
             recLamp: el("recLamp"),
             liveFrame: el("liveFrame"),
+            livePreviewStatus: el("livePreviewStatus"),
             liveWrap: el("liveWrap"),
             timelineRow: el("timelineRow"),
             timelineOverlay: el("timelineOverlay"),
@@ -158,6 +159,7 @@ export class ReVueVROApp {
         // UI-only pending flags keep the interface responsive while backend requests finish.
         this.isStartPending = false;
         this.isStopPending = false;
+        this.isNextPreviewPending = false;
         this.isClipPending = false;
         this.isDeletePending = false;
         this.isSavingLanguage = false;
@@ -339,6 +341,13 @@ export class ReVueVROApp {
     async refreshRemoteVideoSelector() {
         const button = this.refs.recordRemoteVideoSelect;
         if (!button) return;
+        if (this.isRemoteLiveSourceMode()) {
+            ++this.remoteVideoRefreshVersion;
+            this.remoteVideoLibrary = [];
+            this.selectedRemoteVideoFileName = "";
+            this.syncRemoteVideoSelector();
+            return;
+        }
         if (!this.isRemoteSourceMode() || !this.hasValidRemoteRinkId()) {
             ++this.remoteVideoRefreshVersion;
             this.remoteVideoLibrary = [];
@@ -489,20 +498,26 @@ export class ReVueVROApp {
 
     syncRemoteVideoSelector() {
         const remoteMode = this.isRemoteSourceMode();
+        const remoteRecordedMode = remoteMode && !this.isRemoteLiveSourceMode();
         const busy = !!this.isSavingRemoteVideoSelection || !!this.isStartPending ||
             !!this.isStopPending || !!this.state?.isArming || !!this.state?.isRecording;
-        const waitingForRemoteCache = remoteMode && this.isRemoteVideoCacheDelayActive();
+        const waitingForRemoteCache = remoteRecordedMode && this.isRemoteVideoCacheDelayActive();
         this.refs.recordRemoteVideoCol?.classList.toggle("hidden", !remoteMode);
+        this.refs.recordRemoteVideoSelect?.classList.toggle("hidden", !remoteRecordedMode);
         this.syncRemoteRinkIdFromConfig();
         if (this.refs.recordRemoteRinkId) {
             this.refs.recordRemoteRinkId.disabled = !remoteMode || busy || this.isSavingRemoteRinkId;
         }
         if (this.refs.recordRemoteVideoSelect) {
-            this.refs.recordRemoteVideoSelect.disabled = !remoteMode || busy || this.isSavingRemoteRinkId || !this.hasValidRemoteRinkId();
+            this.refs.recordRemoteVideoSelect.disabled = !remoteRecordedMode || busy || this.isSavingRemoteRinkId || !this.hasValidRemoteRinkId();
         }
-        if (remoteMode && this.refs.mainBtn && this.state?.mode === "record" && !this.state?.isRecording) {
-            this.refs.mainBtn.disabled = busy || this.isSavingRemoteRinkId || !this.hasValidRemoteRinkId() ||
-                waitingForRemoteCache || !this.appConfig?.RemoteVideoId;
+        const remoteRecordStart = remoteMode && this.state?.mode !== "replay" && !this.state?.isRecording;
+        const remoteRecordUnavailable = remoteRecordStart &&
+            (this.isSavingRemoteVideoSelection || this.isSavingRemoteRinkId ||
+                !this.hasValidRemoteRinkId() || (remoteRecordedMode && !this.appConfig?.RemoteVideoId) || waitingForRemoteCache);
+        this.refs.mainBtn?.classList.toggle("remoteRecordUnavailable", remoteRecordUnavailable);
+        if (remoteRecordStart && this.refs.mainBtn) {
+            this.refs.mainBtn.disabled = busy || remoteRecordUnavailable;
         }
     }
 
@@ -593,7 +608,6 @@ export class ReVueVROApp {
             this.startRemoteVideoCacheDelay(saved.RemoteVideoSelectedAtUtc);
             await this.refreshLiveUrl();
             await this.refreshRemoteVideoSelector();
-            this.closeRemoteVideoLibrary();
         } catch (err) {
             throw err;
         } finally {
@@ -1831,8 +1845,7 @@ export class ReVueVROApp {
         }, 0);
         document.addEventListener("pointerup", finishRemoteVideoPointer);
         document.addEventListener("pointercancel", finishRemoteVideoPointer);
-        this.refs.remoteVideoModal?.addEventListener("click", (event) => {
-            if (event.target === this.refs.remoteVideoModal) return this.closeRemoteVideoLibrary();
+        this.refs.remoteVideoLibraryList?.addEventListener("click", (event) => {
             const button = event.target.closest?.("button");
             if (!button || button.disabled) return;
             const run = async () => {
@@ -2530,9 +2543,13 @@ export class ReVueVROApp {
         }
 
         if (this.refs.recordSessionInfoText) {
-            const recordHeaderText = this.isRemoteSourceMode()
-                ? (this.selectedRemoteVideoFileName || this.t("remoteVideoNotSelected"))
-                : dynamicHeaderText;
+            const recordHeaderText = this.isRemoteLiveSourceMode()
+                ? (this.hasValidRemoteRinkId()
+                    ? `${this.t("remoteLiveStream")} · ${this.normalizeRemoteRinkId(this.appConfig?.RemoteSessionCode)}`
+                    : this.t("remoteLiveWaitingForRinkId"))
+                : this.isRemoteSourceMode()
+                    ? (this.selectedRemoteVideoFileName || this.t("remoteVideoNotSelected"))
+                    : dynamicHeaderText;
             this.refs.recordSessionInfoText.textContent = recordHeaderText;
             this.refs.recordSessionInfoText.title = recordHeaderText;
             this.refs.recordSessionInfoText.classList.toggle("remoteVideoFileName", this.isRemoteSourceMode());
@@ -2617,8 +2634,20 @@ export class ReVueVROApp {
 
     currentRecordSeconds() {
         if (!this.state?.isRecording) return 0;
+        if (this.isRemoteLiveSourceMode()) {
+            const position = this.remoteLiveRecordingPosition();
+            return position ?? 0;
+        }
         if (this.localRecStartPerf == null) return 0;
         return (performance.now() - this.localRecStartPerf) / 1000.0;
+    }
+
+    remoteLiveRecordingPosition() {
+        if (!this.isRemoteLiveSourceMode()) return null;
+        try {
+            const position = this.refs.liveFrame?.contentWindow?.getRecordingPositionSeconds?.();
+            return Number.isFinite(position) && position >= 0 ? position : null;
+        } catch { return null; }
     }
 
     resetProgramTimerState() {
@@ -2842,7 +2871,7 @@ export class ReVueVROApp {
     getEncoderStatusBadge(config = this.appConfig) {
         const sourceMode = String(config?.VideoSourceMode || (config?.DemoMode ? "Demo" : "RTSP")).toLowerCase();
         if (sourceMode === "demo") return "D";
-        if (sourceMode === "remote") return "R";
+        if (sourceMode === "remoterecorded" || sourceMode === "remotelive") return "R";
         return this.normalizeRtspTransportProtocolValue(config?.RtspTransportProtocol) === "TCP" ? "T" : "U";
     }
 
@@ -3357,6 +3386,12 @@ export class ReVueVROApp {
     }
 
     refreshMediaSurfaceAfterModeChange() {
+        // A live HLS iframe owns a MediaSource buffer. Detaching its media
+        // stack, even for one frame, can suspend playback in WebView2.
+        if (this.isRemoteLiveSourceMode()) {
+            this.scheduleLayout();
+            return;
+        }
         const {
             rightContent,
             liveWrap,
@@ -3799,9 +3834,10 @@ export class ReVueVROApp {
 
         if (this.refs.mainBtn) {
             const remoteVideoReady = !this.isRemoteSourceMode() ||
-                (this.hasValidRemoteRinkId() && !this.isSavingRemoteRinkId && !!this.appConfig?.RemoteVideoId);
-            const waitingForRemoteCache = this.isRemoteSourceMode() && this.isRemoteVideoCacheDelayActive();
-            this.refs.mainBtn.disabled = this.isStopPending ||
+                (this.hasValidRemoteRinkId() && !this.isSavingRemoteRinkId &&
+                    (this.isRemoteLiveSourceMode() || !!this.appConfig?.RemoteVideoId));
+            const waitingForRemoteCache = this.isRemoteSourceMode() && !this.isRemoteLiveSourceMode() && this.isRemoteVideoCacheDelayActive();
+            this.refs.mainBtn.disabled = this.isStopPending || this.isNextPreviewPending ||
                 (this.state?.mode === "record" && !this.state?.isRecording && (!remoteVideoReady || waitingForRemoteCache));
         }
 
@@ -3828,7 +3864,11 @@ export class ReVueVROApp {
         const sourceMode = String(
             this.appConfig?.VideoSourceMode || (this.appConfig?.DemoMode ? "Demo" : "RTSP")
         ).toLowerCase();
-        return sourceMode === "remote";
+        return sourceMode === "remoterecorded" || sourceMode === "remotelive";
+    }
+
+    isRemoteLiveSourceMode() {
+        return String(this.appConfig?.VideoSourceMode || "").toLowerCase() === "remotelive";
     }
 
     bindRemotePlaybackSync() {
@@ -3930,11 +3970,40 @@ export class ReVueVROApp {
         });
     }
 
-    async refreshLiveUrl() {
+    async refreshLiveUrl({ replaceFrame = false } = {}) {
         const response = await apiGet("/api/liveUrl");
         this.currentLiveMode = ["demo", "remote"].includes(response.mode) ? response.mode : "rtsp";
         this.replay.updateSpeedButtonVisuals();
-        if (this.refs.liveFrame) this.refs.liveFrame.src = response.url;
+        if (!this.refs.liveFrame) return null;
+        if (replaceFrame) {
+            // Navigating the old frame has left its previous event MediaSource
+            // visible after Next Competitor. Give the new preview a fresh
+            // browsing context so no segment from that event can survive.
+            const previous = this.refs.liveFrame;
+            const fresh = previous.cloneNode(false);
+            fresh.removeAttribute("src");
+            fresh.style.visibility = "hidden";
+            fresh.src = response.url;
+            previous.replaceWith(fresh);
+            this.refs.liveFrame = fresh;
+            return fresh;
+        }
+        this.refs.liveFrame.src = response.url;
+        return this.refs.liveFrame;
+    }
+
+    async waitForNextLivePreview(frame, timeoutMs = 10000) {
+        const deadline = performance.now() + timeoutMs;
+        while (performance.now() < deadline && this.refs.liveFrame === frame) {
+            try {
+                if (frame.contentWindow?.isPreviewReadyForNext?.()) return true;
+            } catch { }
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
+        try {
+            console.warn("Next Competitor live preview was not ready", frame.contentWindow?.getLiveDiagnostics?.());
+        } catch { }
+        return false;
     }
 
     applyStatusUpdate(nextState) {
@@ -4042,10 +4111,17 @@ export class ReVueVROApp {
     }
 
     async startRecording() {
-        if (this.isStartPending || this.isStopPending ||
+        if (this.isStartPending || this.isStopPending || this.isNextPreviewPending ||
             (this.isRemoteSourceMode() &&
-                (this.isRemoteVideoCacheDelayActive() || this.isSavingRemoteRinkId ||
-                    !this.hasValidRemoteRinkId() || !this.appConfig?.RemoteVideoId))) return;
+                ((!this.isRemoteLiveSourceMode() && this.isRemoteVideoCacheDelayActive()) || this.isSavingRemoteRinkId ||
+                    !this.hasValidRemoteRinkId() || (!this.isRemoteLiveSourceMode() && !this.appConfig?.RemoteVideoId)))) return;
+
+        if (this.isRemoteLiveSourceMode()) {
+            let previewReady = false;
+            try { previewReady = !!this.refs.liveFrame?.contentWindow?.isPreviewReadyForNext?.(); }
+            catch { }
+            if (!previewReady) throw new Error(this.t("remoteLivePreviewStale"));
+        }
 
         this.clearPendingRecordShortcut();
         this.lastRecordStartRequestPerf = performance.now();
@@ -4055,6 +4131,7 @@ export class ReVueVROApp {
 
         try {
             let sourceStartSeconds = null;
+            let liveDelaySeconds = null;
 
             // File-backed modes need the current source position so recording
             // and passive Remote viewers start on the operator-visible frame.
@@ -4068,10 +4145,22 @@ export class ReVueVROApp {
                 }
             }
 
+            if (this.isRemoteLiveSourceMode()) {
+                try {
+                    liveDelaySeconds = this.refs.liveFrame?.contentWindow?.getLiveDelaySeconds?.();
+                } catch { }
+                liveDelaySeconds = Math.max(4, Math.min(7,
+                    Number.isFinite(Number(liveDelaySeconds)) ? Math.ceil(Number(liveDelaySeconds)) : 6));
+            }
+
             const nextState = await apiPost("/api/record/start", {
                 demoStartSeconds: this.currentLiveMode === "demo" ? sourceStartSeconds : null,
-                sourceStartSeconds
+                sourceStartSeconds,
+                liveDelaySeconds
             });
+            if (this.isRemoteLiveSourceMode()) {
+                this.refs.liveFrame?.contentWindow?.useRecordingEvent?.(nextState.remoteLiveEventId);
+            }
             if (this.currentLiveMode === "remote") {
                 this.getRemoteLiveVideoElement()?.play().catch(() => { });
             }
@@ -4150,6 +4239,8 @@ export class ReVueVROApp {
         this.syncPendingUi();
 
         try {
+            if (this.isRemoteLiveSourceMode() && this.remoteLiveRecordingPosition() == null)
+                throw new Error("Wait for the live recording preview before marking a clip.");
             let now = this.currentRecordSeconds();
 
             if (this.state?.openClipStartSeconds == null) {
@@ -4222,6 +4313,19 @@ export class ReVueVROApp {
     async clearSession() {
         // "Next competitor" resets both backend session data and all replay-
         // local interaction state so the next recording starts cleanly.
+        if (this.isNextPreviewPending) return;
+        const isRemoteLive = this.isRemoteLiveSourceMode();
+        const rinkId = this.normalizeRemoteRinkId(this.appConfig?.RemoteSessionCode);
+        let livePreviewReady = false;
+        this.isNextPreviewPending = isRemoteLive;
+        if (isRemoteLive && this.refs.liveFrame) {
+            this.refs.liveFrame.style.visibility = "hidden";
+            this.refs.liveFrame.src = "about:blank";
+            if (this.refs.livePreviewStatus) {
+                this.refs.livePreviewStatus.textContent = this.t("remoteLiveSynchronizing");
+                this.refs.livePreviewStatus.classList.remove("hidden");
+            }
+        }
         this.clearPendingRecordShortcut();
         this.replay.stopReverse();
         this.replay.clearSelectedPlaybackBounds();
@@ -4233,19 +4337,48 @@ export class ReVueVROApp {
 
         this.refs.replayVideo.pause();
 
-        await apiPost("/api/session/clear");
-        this.localRecStartPerf = null;
-        this.resetProgramTimerState();
+        try {
+            await apiPost("/api/session/clear");
+            this.localRecStartPerf = null;
+            this.resetProgramTimerState();
 
-        this.refs.replayVideo.removeAttribute("src");
-        this.refs.replayVideo.load();
+            this.refs.replayVideo.removeAttribute("src");
+            this.refs.replayVideo.load();
+            this.replay.resetZoom();
 
-        this.replay.resetZoom();
-
-        await this.pollStatus();
-        await this.pollElementNames();
-        await this.refreshLiveUrl();
-        this.refreshMediaSurfaceAfterModeChange();
+            // Start a fresh rolling preview before switching to record mode.
+            // Keep it covered until it is playing close to the live edge.
+            let frame = isRemoteLive
+                ? await this.refreshLiveUrl({ replaceFrame: true }) : null;
+            await this.pollStatus();
+            await this.pollElementNames();
+            if (isRemoteLive) {
+                // Never expose a stale preview after the deadline. Reload it
+                // while covered until it is actually close to live. Record
+                // remains disabled throughout this preparation.
+                while (this.isRemoteLiveSourceMode() &&
+                    rinkId === this.normalizeRemoteRinkId(this.appConfig?.RemoteSessionCode) &&
+                    this.refs.liveFrame === frame) {
+                    if (await this.waitForNextLivePreview(frame, 15000)) {
+                        livePreviewReady = true;
+                        break;
+                    }
+                    frame = await this.refreshLiveUrl({ replaceFrame: true });
+                }
+                if (livePreviewReady && this.refs.liveFrame === frame)
+                    frame.style.visibility = "";
+            } else {
+                await this.refreshLiveUrl();
+                this.refreshMediaSurfaceAfterModeChange();
+            }
+        } catch (error) {
+            if (this.refs.liveFrame) this.refs.liveFrame.style.visibility = "";
+            throw error;
+        } finally {
+            this.isNextPreviewPending = false;
+            this.refs.livePreviewStatus?.classList.add("hidden");
+            this.updateUI();
+        }
     }
 
     showRecordingError(error) {

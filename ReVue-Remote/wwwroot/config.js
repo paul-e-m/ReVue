@@ -2,10 +2,21 @@
     const $ = id => document.getElementById(id);
     let me = null;
     let keys = [];
+    const liveSamples = new Map();
+    let liveStatusLoading = false;
+    let liveStatusReloadPending = false;
+    let livePreviewHls = null;
     let currentVideos = [];
+    let currentVideosCode = "";
     let draggedVideoId = "";
     let videoLoadSequence = 0;
     const uploads = new Map();
+    const uploadQueue = [];
+    const MAX_CONCURRENT_VIDEO_UPLOADS = 2;
+    let activeVideoUploads = 0;
+    const transcodes = new Map();
+    const watchingJobs = new Set();
+    let conversionPromptQueue = Promise.resolve();
     const MAX_VIDEO_SIZE_BYTES = 10 * 1024 ** 3;
     const SUPPORTED_VIDEO_EXTENSIONS = new Set(["mp4", "m4v", "mov", "mkv", "ts", "m2ts"]);
 
@@ -34,8 +45,22 @@
     }
 
     function show(view) {
+        const headings = {
+            videos: ["Videos", "Upload and manage videos for your Rink IDs."],
+            keys: ["Rink IDs", "Manage the folders available to your remote sessions."],
+            profile: ["My account", "Update your details and password."],
+            users: ["Users", "Manage access to ReVue Remote."]
+        };
         for (const id of ["videos", "keys", "profile", "users"])
             $(`${id}View`).classList.toggle("hidden", id !== view);
+        document.querySelectorAll("nav [data-view]").forEach(button => {
+            if (button.dataset.view === view) button.setAttribute("aria-current", "page");
+            else button.removeAttribute("aria-current");
+        });
+        $("pageTitle").textContent = headings[view]?.[0] || "Videos";
+        $("pageDescription").textContent = headings[view]?.[1] || "";
+        if (view === "videos") void loadStorageStatus();
+        if (view === "keys") void loadLiveStatuses();
     }
 
     function esc(value) {
@@ -70,46 +95,269 @@
         if (me.role === "Admin") await loadUsers();
     }
 
-    async function loadKeys() {
-        const previousCode = $("videoKey").value;
+    async function loadKeys(preferredCode = $("videoKey").value) {
         keys = await api("/api/manage/keys");
-        $("videoKey").innerHTML = keys.map(key =>
+        const recordedKeys = keys.filter(key => key.mode !== "Live");
+        $("videoKey").innerHTML = recordedKeys.map(key =>
             `<option value="${esc(key.code)}">${esc(key.code)}</option>`).join("");
-        if (keys.some(key => key.code === previousCode)) $("videoKey").value = previousCode;
+        if (recordedKeys.some(key => key.code === preferredCode)) $("videoKey").value = preferredCode;
         $("keyList").innerHTML = keys.map(key => {
             const created = new Date(key.createdAtUtc).toLocaleString();
             const detail = me.role === "Admin"
                 ? `Created by ${esc(key.createdByEmail)}, ${created}`
                 : `Created ${created}`;
-            return `<div class="row"><div><b>${esc(key.code)}</b><div class="muted">${detail}</div></div>` +
-            `<div class="rowActions"><button class="danger small" data-delete-key="${esc(key.code)}">Delete Rink ID</button></div></div>`
+            const media = key.mode === "Live" ? "Live · RTMP publisher" : "Recorded";
+            const streamSettings = key.mode === "Live"
+                ? `<button class="small" data-media-key="${esc(key.code)}">Stream settings</button>` +
+                  `<button class="small secondary" data-encoder-settings="${esc(key.code)}">Encoder settings</button>` : "";
+            return `<div class="row"><div><b>${esc(key.code)}</b><div class="muted">${esc(media)} · ${detail}</div></div>` +
+            `<div class="rowActions">${streamSettings}<button class="small" data-rename-key="${esc(key.code)}">Rename</button>` +
+            `<button class="danger small" data-delete-key="${esc(key.code)}">Delete Rink ID</button></div></div>`
         }).join("") || `<p>${me.role === "Admin" ? "No Rink IDs have been created." : "You have not created any Rink IDs."}</p>`;
+        const hasLive = keys.some(key => key.mode === "Live");
+        $("liveStatusPanel").classList.toggle("hidden", !hasLive);
+        for (const code of liveSamples.keys())
+            if (!keys.some(key => key.mode === "Live" && key.code === code)) liveSamples.delete(code);
+        if (hasLive && !$("keysView").classList.contains("hidden")) void loadLiveStatuses();
         await loadVideos();
     }
 
+    function liveStatusLabel(stream, available, now) {
+        if (stream.active === false) {
+            liveSamples.delete(stream.code);
+            return { text: "Paused. Live stream source ignored", style: "paused", rate: null };
+        }
+        if (!available || !stream.ready) {
+            liveSamples.delete(stream.code);
+            return !available
+                ? { text: "Monitoring unavailable", style: "unavailable" }
+                : { text: "Ready, waiting for feed", style: "waiting" };
+        }
+        const bytes = Number(stream.totalBytes);
+        const prior = liveSamples.get(stream.code);
+        const started = stream.startedAtUtc || "";
+        const unchanged = prior && prior.started === started && bytes === prior.bytes;
+        const lastChange = unchanged ? prior.lastChange : now;
+        const rate = prior && prior.started === started && bytes >= prior.bytes && now > prior.at
+            ? 8 * (bytes - prior.bytes) / ((now - prior.at) / 1000) / 1_000_000 : null;
+        liveSamples.set(stream.code, { bytes, started, at: now, lastChange });
+        if (!(bytes > 0)) return { text: "Connected, waiting for data", style: "connected", rate };
+        if (now - lastChange >= 8000) return { text: "Connected, no recent data", style: "connected", rate };
+        return { text: "Receiving data", style: "receiving", rate };
+    }
+
+    const remoteRoleAbbreviations = {
+        "technical-controller": "TC",
+        "technical-specialist-1": "TS1",
+        "technical-specialist-2": "TS2",
+        judging: "J",
+        referee: "Ref",
+        "data-specialist": "DS",
+        announcer: "Ann",
+        "data-input-operator": "DIO",
+        "video-replay-operator": "VRO",
+        unknown: "Other"
+    };
+
+    function remoteClientSummary(stream) {
+        const total = Number(stream.remoteClientCount) || 0;
+        const roles = (stream.roles || [])
+            .filter(role => Number(role.count) > 0)
+            .map(role => `${Number(role.count)} ${remoteRoleAbbreviations[role.role] || "Other"}`);
+        return roles.length ? `${total} · ${roles.join(" · ")}` : String(total);
+    }
+
+    async function loadLiveStatuses(forceAfterCurrent = false) {
+        if (liveStatusLoading) {
+            if (forceAfterCurrent) liveStatusReloadPending = true;
+            return;
+        }
+        if ($("keysView").classList.contains("hidden") ||
+            $("liveStatusPanel").classList.contains("hidden")) return;
+        liveStatusLoading = true;
+        try {
+            const snapshot = await api("/api/manage/live-streams");
+            const now = Date.now();
+            const streams = snapshot.streams || [];
+            let receiving = 0, waiting = 0, active = 0;
+            $("liveStatusList").innerHTML = streams.map(stream => {
+                const state = liveStatusLabel(stream, snapshot.available, now);
+                if (stream.active !== false) active++;
+                if (state.style === "receiving") receiving++;
+                if (state.style === "waiting") waiting++;
+                const started = stream.startedAtUtc
+                    ? new Date(stream.startedAtUtc).toLocaleString() : "—";
+                const resolution = stream.width && stream.height
+                    ? `${stream.width} × ${stream.height}` : "—";
+                const codecs = stream.codecs?.length ? stream.codecs.join(" · ") : "—";
+                const rate = stream.active === false || !stream.ready || !snapshot.available ? "—"
+                    : state.rate == null ? "Measuring…" : `${state.rate.toFixed(2)} Mbps`;
+                const received = stream.totalBytes == null ? "—" : formatStorageSize(stream.totalBytes);
+                const feedActive = stream.active !== false;
+                return `<article class="liveStreamCard"><div class="liveStreamCardHeader"><strong>${esc(stream.code)}</strong>` +
+                    `<button type="button" class="liveFeedToggle ${feedActive ? "active" : "paused"}" data-live-code="${esc(stream.code)}" data-live-active="${feedActive}" aria-pressed="${feedActive}" title="${feedActive ? "Pause this live feed" : "Activate this live feed"}">${feedActive ? "Active" : "Paused"}</button></div>` +
+                    `<div class="liveConnectionLine"><span class="liveStreamState ${state.style}">${esc(state.text)}</span></div>` +
+                    `<dl class="liveStreamFacts"><dt>VRO</dt><dd class="${stream.vroConnected ? "connectionUp" : "connectionDown"}">${stream.vroConnected ? "Connected" : "Disconnected"}</dd>` +
+                    `<dt>Clients</dt><dd>${esc(remoteClientSummary(stream))}</dd><dt>Started</dt><dd>${esc(started)}</dd>` +
+                    `<dt>Resolution</dt><dd>${esc(resolution)}</dd><dt>Codecs</dt><dd>${esc(codecs)}</dd>` +
+                    `<dt>Receive rate</dt><dd>${esc(rate)}</dd><dt>Total received</dt><dd>${esc(received)}</dd></dl>` +
+                    `<button type="button" class="small secondary livePreviewButton" data-live-preview="${esc(stream.code)}" ${feedActive && stream.ready && snapshot.available ? "" : "disabled"}>Preview</button></article>`;
+            }).join("");
+            $("liveStatusSummary").textContent = snapshot.available
+                ? `${active} active · ${streams.length - active} paused · ${receiving} receiving${waiting ? ` · ${waiting} waiting` : ""}`
+                : "Stream monitoring is unavailable. Check the MediaMTX control API.";
+            $("liveStatusUpdated").textContent = `Updated ${new Date(now).toLocaleTimeString()}`;
+        } catch {
+            $("liveStatusSummary").textContent = "Stream status could not be loaded.";
+            $("liveStatusUpdated").textContent = "";
+        } finally {
+            liveStatusLoading = false;
+            if (liveStatusReloadPending) {
+                liveStatusReloadPending = false;
+                void loadLiveStatuses();
+            }
+        }
+    }
+
+    function stopLivePreview() {
+        livePreviewHls?.destroy();
+        livePreviewHls = null;
+        const player = $("livePreviewVideo");
+        player.pause();
+        player.removeAttribute("src");
+        player.load();
+    }
+
+    function openLivePreview(code) {
+        stopLivePreview();
+        $("livePreviewTitle").textContent = `${code} live preview`;
+        $("livePreviewMessage").textContent = "The preview follows the live feed with a short delay. It starts muted; use the player controls for sound.";
+        $("livePreviewDialog").showModal();
+        const player = $("livePreviewVideo");
+        player.muted = true;
+        const url = `/api/sessions/${encodeURIComponent(code)}/live/preview/index.m3u8`;
+        if (player.canPlayType("application/vnd.apple.mpegurl")) {
+            player.src = url;
+            void player.play().catch(() => {});
+        } else if (window.Hls?.isSupported()) {
+            livePreviewHls = new window.Hls({ liveSyncDurationCount: 3 });
+            livePreviewHls.loadSource(url);
+            livePreviewHls.attachMedia(player);
+            livePreviewHls.on(window.Hls.Events.MANIFEST_PARSED, () => {
+                void player.play().catch(() => {
+                    $("livePreviewMessage").textContent = "Press Play to start the preview.";
+                });
+            });
+            livePreviewHls.on(window.Hls.Events.ERROR, (_, detail) => {
+                if (detail.fatal)
+                    $("livePreviewMessage").textContent = "The live preview could not load. The publisher may have disconnected.";
+            });
+        } else {
+            $("livePreviewMessage").textContent = "This browser does not support the live preview format.";
+        }
+    }
+
+    function setKeyPasswordVisibility(visible) {
+        const input = $("keyPublishPassword");
+        const button = $("toggleKeyPublishPassword");
+        input.type = visible ? "text" : "password";
+        button.setAttribute("aria-label", visible ? "Hide password" : "Show password");
+        button.title = visible ? "Hide password" : "Show password";
+        button.querySelector(".passwordVisibleIcon").classList.toggle("hidden", visible);
+        button.querySelector(".passwordHiddenIcon").classList.toggle("hidden", !visible);
+    }
+
+    function prepareKeyPasswordEditor(key, settings = {}) {
+        const input = $("keyPublishPassword");
+        const hasPassword = settings.hasPublishPassword ?? key.hasPublishPassword;
+        const canReveal = settings.passwordCanBeRevealed !== false;
+        input.value = canReveal && typeof settings.publishPassword === "string"
+            ? settings.publishPassword : "";
+        input.placeholder = hasPassword && !input.value ? "••••••••" : "Enter a password (optional)";
+        setKeyPasswordVisibility(false);
+        $("keyMediaForm").dataset.passwordCanBeRevealed = String(canReveal);
+        $("toggleKeyPublishPassword").disabled = hasPassword && !canReveal && !input.value;
+        $("removeKeyPublishPassword").classList.toggle("hidden", !hasPassword);
+        $("keyMediaPasswordHint").textContent = hasPassword && !canReveal
+            ? "This password predates reveal support and cannot be recovered. Enter and save a replacement once to enable Show password."
+            : hasPassword
+            ? "The current password is loaded. Use the eye to show it, or edit it and Save."
+            : "Enter a password to protect this RTMP feed, or leave this blank for no password.";
+    }
+
     function renderVideos() {
-        $("deleteAllVideos").disabled = currentVideos.length === 0 || !$("videoKey").value;
-        $("videoList").innerHTML = currentVideos.map(video =>
-            `<div class="row videoRow" draggable="true" data-video-id="${esc(video.id)}">` +
-            `<span class="dragHandle" title="Drag to reorder" aria-hidden="true">⋮⋮</span>` +
-            `<div><b>${esc(video.fileName)}</b><div class="muted">${(video.sizeBytes / 1048576).toFixed(1)} MB · ${new Date(video.uploadedAtUtc).toLocaleString()}</div></div>` +
-            `<div class="rowActions"><button class="small" data-rename-video="${esc(video.id)}">Rename</button>` +
-            `<button class="danger small" data-delete-video="${esc(video.id)}">Delete</button></div></div>`
-        ).join("") || "<p>No videos uploaded for this Rink ID.</p>";
+        const selectedCode = $("videoKey").value;
+        $("deleteAllVideos").disabled = currentVideos.length === 0 ||
+            !selectedCode || selectedCode !== currentVideosCode;
+        $("videoList").innerHTML = currentVideos.map((video, index) => {
+            const height = Number(video.height);
+            const fps = Number(video.framesPerSecond);
+            const bitrate = Number(video.videoBitrateBitsPerSecond);
+            const scan = ["tt", "bb", "tb", "bt"].includes(String(video.fieldOrder || "").toLowerCase()) ? "i" : "p";
+            const resolution = height === 720 || height === 1080 ? `${height}${scan}` : "Unavailable";
+            const frameRate = fps > 0 ? `${fps.toFixed(2).replace(/\.?0+$/, "")} fps` : "Unavailable";
+            const videoBitrate = bitrate > 0 ? `${(bitrate / 1_000_000).toFixed(2)} Mbps` : "Unavailable";
+            const gop = video.gop;
+            const minGopFrames = Number(gop?.minFrames);
+            const maxGopFrames = Number(gop?.maxFrames);
+            const hasGopFrames = minGopFrames > 0 && maxGopFrames >= minGopFrames;
+            const gopCaption = !hasGopFrames ? "GOP unavailable"
+                : minGopFrames === maxGopFrames ? `GOP ${minGopFrames}`
+                    : `GOP min ${minGopFrames} · max ${maxGopFrames}`;
+            const gopDetails = !hasGopFrames ? "GOP frame interval unavailable."
+                : `Shortest measured keyframe gap: ${minGopFrames} frames. Longest: ${maxGopFrames} frames.`;
+            const transcode = transcodes.get(video.id);
+            const transcodeStatus = transcode
+                ? `<div class="transcodeStatus"><progress max="100" value="${Number(transcode.percent) || 0}"></progress><span>${esc(transcode.label)}</span></div>`
+                : "";
+            return `<div class="row videoRow" draggable="true" data-video-id="${esc(video.id)}">` +
+                `<span class="dragHandle" title="Drag to reorder" aria-hidden="true">⋮⋮</span>` +
+                `<button type="button" class="videoPreview" data-preview-video="${esc(video.id)}" aria-label="Preview video ${index + 1}" title="Preview video" ${transcode ? "disabled" : ""}>` +
+                `<img src="/api/sessions/${encodeURIComponent(selectedCode)}/videos/${encodeURIComponent(video.id)}/thumbnail?at=28&amp;v=${encodeURIComponent(video.uploadedAtUtc || "")}" alt="" loading="lazy">` +
+                `<span class="videoNumber" aria-hidden="true">${index + 1}</span><span class="videoPlayIcon" aria-hidden="true"><svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="18"/><path d="m16 12 12 8-12 8z"/></svg></span></button>` +
+                `<div class="videoInfo"><div class="videoName"><b>${esc(video.fileName)}</b></div><div class="muted">${(video.sizeBytes / 1048576).toFixed(1)} MB · ${new Date(video.uploadedAtUtc).toLocaleString()}</div>` +
+                `<div class="videoMetadata"><button type="button" class="metaButton" data-convert-resolution="${esc(video.id)}" title="${height === 1080 ? "Convert to 720p" : "Already 720p"}" ${height === 1080 && !transcode ? "" : "disabled"}>${resolution}</button>` +
+                `<button type="button" class="metaButton" data-convert-fps="${esc(video.id)}" title="${fps > 30 ? "Convert to 29.97 fps" : "Frame rate is 30 fps or lower"}" ${fps > 30 && !transcode ? "" : "disabled"}>${frameRate}</button>` +
+                `<button type="button" class="metaButton" disabled title="${esc(gopDetails)}">${gopCaption}</button>` +
+                `<span>Bitrate: ${videoBitrate}</span></div>${transcodeStatus}</div>` +
+                `<div class="rowActions"><button class="small" data-rename-video="${esc(video.id)}" ${transcode ? "disabled" : ""}>Rename</button>` +
+                `<button class="danger small" data-delete-video="${esc(video.id)}" ${transcode ? "disabled" : ""}>Delete</button></div></div>`;
+        }).join("") || "<p class=\"emptyState\">No videos uploaded for this Rink ID.</p>";
     }
 
     async function loadVideos() {
+        void loadStorageStatus();
         const sequence = ++videoLoadSequence;
         const code = $("videoKey").value;
+        if (code !== currentVideosCode) {
+            currentVideos = [];
+            currentVideosCode = code;
+            renderVideos();
+            if (code) $("videoList").innerHTML = "<p class=\"emptyState\">Loading videos…</p>";
+        }
         if (!code) {
             currentVideos = [];
+            currentVideosCode = "";
             renderVideos();
-            $("videoList").innerHTML = "<p>Create a Rink ID before uploading videos.</p>";
+            $("videoList").innerHTML = "<p>Create or select a Recorded Rink ID before uploading videos.</p>";
             return;
         }
-        const videos = await api(`/api/sessions/${encodeURIComponent(code)}/videos`);
+        const [videos, activeJobs] = await Promise.all([
+            api(`/api/sessions/${encodeURIComponent(code)}/videos`),
+            api(`/api/sessions/${encodeURIComponent(code)}/transcodes`)
+        ]);
         if (sequence !== videoLoadSequence || code !== $("videoKey").value) return;
         currentVideos = videos;
+        currentVideosCode = code;
+        for (const job of activeJobs) {
+            transcodes.set(job.sourceVideoId, {
+                jobId: job.uploadId,
+                percent: Number(job.transcodePercent) || 0,
+                label: job.transcodePercent == null ? "Queued for transcoding…" : `Transcoding ${Number(job.transcodePercent).toFixed(1)}%`
+            });
+            const video = videos.find(item => item.id === job.sourceVideoId);
+            if (video) void watchVideoConversion(code, video, job.uploadId);
+        }
         renderVideos();
     }
 
@@ -138,8 +386,67 @@
         return `${hours}h ${minutes}m remaining`;
     }
 
+    function formatStorageSize(bytes) {
+        if (bytes >= 1_000_000_000_000) return `${(bytes / 1_000_000_000_000).toFixed(1)} TB`;
+        if (bytes >= 1_000_000_000) return `${(bytes / 1_000_000_000).toFixed(1)} GB`;
+        return `${(bytes / 1_000_000).toFixed(1)} MB`;
+    }
+
+    async function loadStorageStatus() {
+        try {
+            const status = await api("/api/manage/storage");
+            const total = Number(status?.totalBytes);
+            const available = Number(status?.availableBytes);
+            const revueUsed = Number(status?.revueUsedBytes);
+            const capacity = Number(status?.maximumStorageBytes);
+            const remaining = Number(status?.availableWithinLimitBytes);
+            if (!Number.isFinite(total) || total <= 0 ||
+                !Number.isFinite(available) || available < 0 || available > total ||
+                !Number.isFinite(revueUsed) || revueUsed < 0 ||
+                !Number.isFinite(capacity) || capacity <= 0 || capacity > total ||
+                !Number.isFinite(remaining) || remaining < 0 || remaining > capacity)
+                throw new Error("Storage capacity unavailable.");
+            const usedPercent = revueUsed / capacity * 100;
+            $("storageUsed").value = Math.min(100, usedPercent);
+            $("storageUsed").setAttribute("aria-valuetext", `${usedPercent.toFixed(1)}% of the 90% storage limit used`);
+            $("storagePercent").textContent = `${usedPercent.toFixed(1)}% used`;
+            $("storageDetails").textContent = `${formatStorageSize(remaining)} available of ${formatStorageSize(capacity)}`;
+            $("storageStatus").classList.toggle("low", remaining / capacity < 0.2);
+        } catch {
+            $("storageUsed").removeAttribute("value");
+            $("storageUsed").removeAttribute("aria-valuetext");
+            $("storagePercent").textContent = "Unavailable";
+            $("storageDetails").textContent = "Server storage could not be measured.";
+            $("storageStatus").classList.remove("low");
+        }
+    }
+
     function delay(milliseconds) {
         return new Promise(resolve => window.setTimeout(resolve, milliseconds));
+    }
+
+    function confirmVideoConversion(video, mode) {
+        const choice = conversionPromptQueue.then(() => {
+            return new Promise(resolve => {
+                const dialog = $("conversionDialog");
+                const resolution = mode === "resolution";
+                $("conversionDialogTitle").textContent = resolution
+                    ? "Convert to lower resolution?" : "Reduce frame rate?";
+                $("conversionDialogDescription").textContent = resolution
+                    ? `${video.fileName} is ${video.width} × ${video.height}. Converting it to 1280 × 720 reduces the data viewers need to download and may improve playback on slower internet connections.`
+                    : `${video.fileName} is ${Number(video.framesPerSecond).toFixed(2)} fps. Converting it to 29.97 fps reduces the data viewers need to download.`;
+                $("confirmConversion").textContent = resolution ? "Convert to 720p" : "Convert to 29.97 fps";
+                const finish = confirmed => {
+                    dialog.close();
+                    resolve(confirmed);
+                };
+                $("cancelConversion").onclick = () => finish(false);
+                $("confirmConversion").onclick = () => finish(true);
+                dialog.showModal();
+            });
+        });
+        conversionPromptQueue = choice.then(() => {}, () => {});
+        return choice;
     }
 
     function parseUploadError(xhr, fallback) {
@@ -185,6 +492,16 @@
         });
     }
 
+    function pumpUploadQueue() {
+        while (activeVideoUploads < MAX_CONCURRENT_VIDEO_UPLOADS && uploadQueue.length > 0) {
+            const job = uploadQueue.shift();
+            if (job.cancelled || !uploads.has(job.id)) continue;
+            activeVideoUploads++;
+            job.slotActive = true;
+            job.start();
+        }
+    }
+
     async function createUpload(file, code) {
         const extension = file.name.includes(".") ? file.name.split(".").pop().toLowerCase() : "";
         if (!SUPPORTED_VIDEO_EXTENSIONS.has(extension)) {
@@ -209,16 +526,24 @@
         const id = crypto.randomUUID();
         const row = document.createElement("div");
         row.className = "progressRow";
-        row.innerHTML = `<div class="uploadName">${esc(file.name)}</div><progress max="100" value="0"></progress><span class="uploadStatus">Preparing…</span><button class="danger small">Cancel</button>`;
+        row.innerHTML = `<div class="uploadName">${esc(file.name)}</div><progress max="100" value="0"></progress><span class="uploadStatus">Queued for upload…</span><button class="danger small">Cancel</button>`;
         $("uploadProgressList").appendChild(row);
 
         const progress = row.querySelector("progress");
         const status = row.querySelector("span");
         const job = {
             id, fingerprint, file, code, row, progress, status,
-            uploadId: "", xhrs: new Set(), cancelled: false, paused: false, samples: []
+            uploadId: "", xhrs: new Set(), cancelled: false, paused: false,
+            slotActive: false, samples: []
         };
         uploads.set(id, job);
+
+        function releaseUploadSlot() {
+            if (!job.slotActive) return;
+            job.slotActive = false;
+            activeVideoUploads--;
+            pumpUploadQueue();
+        }
 
         function updateProgress(bytes, label = "") {
             const now = performance.now();
@@ -236,6 +561,11 @@
         async function cancel() {
             if (job.cancelled) return;
             job.cancelled = true;
+            const queuedIndex = uploadQueue.indexOf(job);
+            if (queuedIndex >= 0) {
+                uploadQueue.splice(queuedIndex, 1);
+                job.start();
+            }
             for (const xhr of [...job.xhrs]) xhr.abort();
             try {
                 if (job.uploadId) {
@@ -249,7 +579,18 @@
         job.cancel = cancel;
         row.querySelector("button").onclick = cancel;
 
+        await new Promise(resolve => {
+            job.start = resolve;
+            uploadQueue.push(job);
+            pumpUploadQueue();
+        });
+        if (job.cancelled) {
+            releaseUploadSlot();
+            return;
+        }
+
         try {
+            status.textContent = "Preparing…";
             const started = await api(`/api/sessions/${encodeURIComponent(code)}/uploads`, {
                 method: "POST",
                 body: JSON.stringify({
@@ -258,8 +599,13 @@
                     lastModifiedUnixMs: file.lastModified
                 })
             });
-            if (job.cancelled) return;
             job.uploadId = started.uploadId;
+            if (job.cancelled) {
+                try {
+                    await api(`/api/sessions/${encodeURIComponent(code)}/uploads/${encodeURIComponent(job.uploadId)}`, { method: "DELETE" });
+                } catch { }
+                return;
+            }
             const chunkSize = Number(started.chunkSizeBytes) || 8 * 1024 * 1024;
             const chunkCount = Math.ceil(file.size / chunkSize);
             const completed = new Set((started.completedChunkIndexes || []).map(Number));
@@ -350,11 +696,13 @@
             }
             if (!finalized) throw finalizeError || new Error("The server could not finalize the upload.");
 
+            releaseUploadSlot();
+
             const cancelButton = row.querySelector("button");
             cancelButton.disabled = true;
-            updateProgress(file.size, "Processing video…");
+            updateProgress(file.size, "Inspecting video…");
+            let processingStatus;
             while (!job.cancelled) {
-                let processingStatus;
                 try {
                     processingStatus = await api(`/api/sessions/${encodeURIComponent(code)}/uploads/${encodeURIComponent(job.uploadId)}`);
                 } catch {
@@ -365,7 +713,8 @@
                 if (stage === "completed") break;
                 if (stage === "failed")
                     throw new Error(processingStatus.errorMessage || "The server could not process this video.");
-                updateProgress(file.size, "Processing video…");
+                progress.value = 100;
+                status.textContent = "Processing video…";
                 await delay(1000);
             }
             if (job.cancelled) return;
@@ -373,16 +722,76 @@
             progress.value = 100;
             status.textContent = "Complete";
             row.classList.add("uploadComplete");
-            if ($("videoKey").value === code) await loadVideos();
-            msg(`${file.name} upload complete.`, true);
+            let refreshError = "";
+            if ($("videoKey").value === code) {
+                try { await loadVideos(); }
+                catch (error) { refreshError = ` The video library could not refresh: ${error.message}`; }
+            }
+            msg(`${file.name} upload complete.${refreshError}`, !refreshError);
             window.setTimeout(() => row.remove(), 3500);
         } catch (error) {
             if (job.cancelled) return;
             job.paused = true;
             for (const xhr of [...job.xhrs]) xhr.abort();
             row.classList.add("uploadFailed");
-            status.textContent = "Failed—select the same file to retry";
+            status.textContent = `Failed: ${error.message}`;
             msg(`${file.name} upload failed: ${error.message}`);
+            if (error.message.includes("storage capacity")) void loadStorageStatus();
+        } finally { releaseUploadSlot(); }
+    }
+
+    async function watchVideoConversion(code, video, jobId) {
+        if (watchingJobs.has(jobId)) return;
+        watchingJobs.add(jobId);
+        try {
+            while (transcodes.get(video.id)?.jobId === jobId) {
+                let status;
+                try {
+                    status = await api(`/api/sessions/${encodeURIComponent(code)}/uploads/${encodeURIComponent(jobId)}`);
+                } catch {
+                    await delay(2000);
+                    continue;
+                }
+                if (status.stage === "completed") {
+                    transcodes.delete(video.id);
+                    if ($("videoKey").value === code) await loadVideos();
+                    msg(`${video.fileName} conversion complete.`, true);
+                    return;
+                }
+                if (status.stage === "failed")
+                    throw new Error(status.errorMessage || "Video conversion failed.");
+                const percent = status.transcodePercent;
+                transcodes.set(video.id, {
+                    jobId,
+                    percent: percent == null ? 0 : Math.min(100, Math.max(0, Number(percent) || 0)),
+                    label: percent == null ? "Queued for transcoding…" : `Transcoding ${Number(percent).toFixed(1)}%`
+                });
+                if ($("videoKey").value === code) renderVideos();
+                await delay(1000);
+            }
+        } catch (error) {
+            transcodes.delete(video.id);
+            if ($("videoKey").value === code) renderVideos();
+            msg(`${video.fileName} conversion failed: ${error.message}`);
+        } finally {
+            watchingJobs.delete(jobId);
+        }
+    }
+
+    async function startVideoConversion(video, mode) {
+        const code = $("videoKey").value;
+        if (transcodes.has(video.id) || !await confirmVideoConversion(video, mode) ||
+            code !== $("videoKey").value) return;
+        try {
+            const job = await api(
+                `/api/sessions/${encodeURIComponent(code)}/videos/${encodeURIComponent(video.id)}/transcode`, {
+                    method: "POST", body: JSON.stringify({ mode })
+                });
+            transcodes.set(video.id, { jobId: job.uploadId, percent: 0, label: "Queued for transcoding…" });
+            if ($("videoKey").value === code) renderVideos();
+            void watchVideoConversion(code, video, job.uploadId);
+        } catch (error) {
+            msg(`${video.fileName} conversion could not start: ${error.message}`);
         }
     }
 
@@ -404,48 +813,260 @@
     $("logoutBtn").onclick = async () => { await api("/api/auth/logout", { method: "POST" }); location.reload(); };
     document.querySelectorAll("[data-view]").forEach(button => button.onclick = () => show(button.dataset.view));
 
+    $("newKeyMode").onchange = () => {
+        const live = $("newKeyMode").value === "Live";
+        $("newKeyPasswordRow").classList.toggle("hidden", !live);
+        $("newKeyPassword").required = live;
+        if (!live) $("newKeyPassword").value = "";
+    };
     $("keyForm").onsubmit = async event => {
         event.preventDefault();
         try {
-            await api("/api/manage/keys", { method: "POST", body: JSON.stringify({ code: $("newKey").value.toUpperCase() }) });
-            $("newKey").value = "";
+            const mode = $("newKeyMode").value;
+            await api("/api/manage/keys", {
+                method: "POST",
+                body: JSON.stringify({
+                    code: $("newKey").value.toUpperCase(),
+                    mode,
+                    publishPassword: mode === "Live" ? $("newKeyPassword").value : ""
+                })
+            });
+            $("keyForm").reset();
+            $("newKeyPassword").required = false;
+            $("newKeyPasswordRow").classList.add("hidden");
             await loadKeys();
             msg("Rink ID created.", true);
         } catch (error) { msg(error.message); }
     };
 
     $("keyList").onclick = async event => {
+        const encoderCode = event.target.closest("[data-encoder-settings]")?.dataset.encoderSettings;
+        if (encoderCode) {
+            $("encoderSettingsRinkId").textContent = encoderCode;
+            $("encoderSettingsDialog").showModal();
+            return;
+        }
+        const mediaCode = event.target.dataset.mediaKey;
+        if (mediaCode) {
+            const key = keys.find(item => item.code === mediaCode);
+            if (!key || key.mode !== "Live") return;
+            try {
+                const settings = await api(`/api/manage/keys/${encodeURIComponent(mediaCode)}/media`);
+                $("keyMediaForm").dataset.code = mediaCode;
+                $("keyMediaTitle").textContent = `${mediaCode} live stream`;
+                $("keyRtmpUrl").textContent = `rtmp://${location.hostname}/${mediaCode}`;
+                prepareKeyPasswordEditor(key, settings);
+                $("keyCopyFeedback").textContent = "";
+                msg("", false, "keyMediaMessage");
+                $("keyMediaDialog").showModal();
+            } catch (error) { msg(error.message); }
+            return;
+        }
+        const renameCode = event.target.dataset.renameKey;
+        if (renameCode) {
+            $("renameKeyForm").dataset.oldCode = renameCode;
+            $("renameKeyCode").value = renameCode;
+            msg("", false, "renameKeyMessage");
+            $("renameKeyDialog").showModal();
+            $("renameKeyCode").focus();
+            $("renameKeyCode").select();
+            return;
+        }
         const code = event.target.dataset.deleteKey;
         if (!code || !confirm(`Delete Rink ID ${code}? All videos stored under this Rink ID will be permanently deleted.`)) return;
         try {
             await cancelUploadsFor(code);
             await api(`/api/manage/keys/${encodeURIComponent(code)}`, { method: "DELETE" });
+            transcodes.clear();
             await loadKeys();
             msg(`Rink ID ${code} and all of its videos were deleted.`, true);
         } catch (error) { msg(error.message); }
     };
 
+    $("liveStatusList").onclick = async event => {
+        const toggle = event.target.closest("[data-live-active]");
+        if (toggle) {
+            const code = toggle.dataset.liveCode;
+            if (!code) return;
+            const active = toggle.dataset.liveActive !== "true";
+            toggle.disabled = true;
+            try {
+                await api(`/api/manage/keys/${encodeURIComponent(code)}/live-feed`, {
+                    method: "PUT", body: JSON.stringify({ active })
+                });
+                const key = keys.find(item => item.code === code);
+                if (key) key.liveFeedActive = active;
+                await loadLiveStatuses(true);
+                msg(`${code} live feed ${active ? "activated" : "paused"}.`, true);
+            } catch (error) {
+                msg(error.message);
+                toggle.disabled = false;
+            }
+            return;
+        }
+        const code = event.target.closest("[data-live-preview]")?.dataset.livePreview;
+        if (code && keys.some(key => key.mode === "Live" && key.code === code))
+            openLivePreview(code);
+    };
+    $("closeLivePreview").onclick = () => $("livePreviewDialog").close();
+    $("livePreviewDialog").addEventListener("close", stopLivePreview);
+    $("closeEncoderSettings").onclick = () => $("encoderSettingsDialog").close();
+    $("copyEncoderSettings").onclick = async () => {
+        const settings = [
+            "ReVue Remote encoder settings",
+            "Protocol: RTMP",
+            "Resolution: 1280 x 720 progressive",
+            "Frame rate: 59.94 fps constant (60000/1001)",
+            "Video: H.264/AVC, 8-bit 4:2:0 (yuv420p)",
+            "Rate control: CBR",
+            "Video bitrate: 6000 kbps recommended",
+            "Keyframe interval: 1 second (GOP 60)",
+            "B-frames: 0",
+            "Audio: AAC-LC, 48 kHz, stereo, 128 kbps"
+        ].join("\n");
+        try {
+            if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(settings);
+            else {
+                const input = document.createElement("textarea");
+                input.value = settings;
+                input.style.position = "fixed";
+                input.style.opacity = "0";
+                document.body.append(input);
+                input.select();
+                const copied = document.execCommand("copy");
+                input.remove();
+                if (!copied) throw new Error("Clipboard unavailable");
+            }
+            $("copyEncoderSettingsLabel").textContent = "Copied";
+            window.setTimeout(() => $("copyEncoderSettingsLabel").textContent = "Copy settings", 1600);
+        } catch {
+            msg("The encoder settings could not be copied. Select and copy them manually.");
+        }
+    };
+
+    $("cancelRenameKey").onclick = () => $("renameKeyDialog").close();
+    $("cancelKeyMedia").onclick = () => $("keyMediaDialog").close();
+    $("toggleKeyPublishPassword").onclick = () =>
+        setKeyPasswordVisibility($("keyPublishPassword").type === "password");
+    $("keyPublishPassword").oninput = () => {
+        const legacyPassword = $("keyMediaForm").dataset.passwordCanBeRevealed === "false";
+        $("toggleKeyPublishPassword").disabled = legacyPassword && !$("keyPublishPassword").value;
+    };
+    $("removeKeyPublishPassword").onclick = async () => {
+        const code = $("keyMediaForm").dataset.code;
+        if (!code || !confirm(`Remove the RTMP publish password from ${code}?`)) return;
+        try {
+            await api(`/api/manage/keys/${encodeURIComponent(code)}/media`, {
+                method: "PUT", body: JSON.stringify({ publishPassword: "" })
+            });
+            const key = keys.find(item => item.code === code);
+            if (key) {
+                key.hasPublishPassword = false;
+                prepareKeyPasswordEditor(key, {
+                    hasPublishPassword: false,
+                    publishPassword: "",
+                    passwordCanBeRevealed: true
+                });
+            }
+            msg("Publish password removed.", true, "keyMediaMessage");
+        } catch (error) { msg(error.message, false, "keyMediaMessage"); }
+    };
+    $("copyKeyRtmpUrl").onclick = async () => {
+        const url = $("keyRtmpUrl").textContent;
+        try {
+            if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(url);
+            else {
+                const input = document.createElement("textarea");
+                input.value = url;
+                input.style.position = "fixed";
+                input.style.opacity = "0";
+                document.body.append(input);
+                input.select();
+                const copied = document.execCommand("copy");
+                input.remove();
+                if (!copied) throw new Error("Clipboard unavailable");
+            }
+            $("keyCopyFeedback").textContent = "Copied to clipboard.";
+        } catch {
+            $("keyCopyFeedback").textContent = "Could not copy the URL. Select it and copy it manually.";
+        }
+    };
+    $("keyMediaForm").onsubmit = async event => {
+        event.preventDefault();
+        const code = $("keyMediaForm").dataset.code;
+        const enteredPassword = $("keyPublishPassword").value;
+        const body = { publishPassword: enteredPassword.length ? enteredPassword : null };
+        try {
+            await api(`/api/manage/keys/${encodeURIComponent(code)}/media`, {
+                method: "PUT", body: JSON.stringify(body)
+            });
+            $("keyMediaDialog").close();
+            await loadKeys();
+            msg(`${code} stream settings saved.`, true);
+        } catch (error) { msg(error.message, false, "keyMediaMessage"); }
+    };
+    $("renameKeyForm").onsubmit = async event => {
+        event.preventDefault();
+        const oldCode = $("renameKeyForm").dataset.oldCode;
+        const newCode = $("renameKeyCode").value.trim().toUpperCase();
+        try {
+            await api(`/api/manage/keys/${encodeURIComponent(oldCode)}`, {
+                method: "PUT", body: JSON.stringify({ code: newCode })
+            });
+            $("renameKeyDialog").close();
+            await loadKeys($("videoKey").value === oldCode ? newCode : $("videoKey").value);
+            msg(`Rink ID ${oldCode} was renamed to ${newCode}.`, true);
+        } catch (error) { msg(error.message, false, "renameKeyMessage"); }
+    };
+
     $("videoKey").onchange = loadVideos;
+    $("videoFiles").onchange = () => {
+        const count = $("videoFiles").files.length;
+        $("selectedFilesLabel").textContent = count === 0 ? "No files selected"
+            : count === 1 ? $("videoFiles").files[0].name : `${count} videos selected`;
+    };
     $("uploadBtn").onclick = () => {
         const files = [...$("videoFiles").files];
         const code = $("videoKey").value;
         if (!code || files.length === 0) return msg("Choose a Rink ID and at least one MP4 video.");
         for (const file of files) void createUpload(file, code);
         $("videoFiles").value = "";
+        $("selectedFilesLabel").textContent = "No files selected";
     };
 
     $("deleteAllVideos").onclick = async () => {
         const code = $("videoKey").value;
-        if (!code || currentVideos.length === 0 || !confirm(`Delete all videos stored under Rink ID ${code}? This cannot be undone.`)) return;
+        if (!code || code !== currentVideosCode || currentVideos.length === 0 ||
+            !confirm(`Delete all videos stored under Rink ID ${code}? This cannot be undone.`)) return;
         try {
             await cancelUploadsFor(code);
             await api(`/api/sessions/${encodeURIComponent(code)}/videos`, { method: "DELETE" });
+            transcodes.clear();
             await loadVideos();
             msg(`All videos under Rink ID ${code} were deleted.`, true);
         } catch (error) { msg(error.message); }
     };
 
     $("videoList").onclick = async event => {
+        const previewId = event.target.closest("[data-preview-video]")?.dataset.previewVideo;
+        if (previewId) {
+            const video = currentVideos.find(item => item.id === previewId);
+            const code = $("videoKey").value;
+            if (!video || !code) return;
+            $("previewTitle").textContent = video.fileName;
+            $("previewDialog").showModal();
+            const player = $("previewVideo");
+            player.src = `/api/sessions/${encodeURIComponent(code)}/videos/${encodeURIComponent(video.id)}/preview`;
+            player.load();
+            return;
+        }
+        const resolutionId = event.target.dataset.convertResolution;
+        const fpsId = event.target.dataset.convertFps;
+        if (resolutionId || fpsId) {
+            const video = currentVideos.find(item => item.id === (resolutionId || fpsId));
+            if (video) void startVideoConversion(video, resolutionId ? "resolution" : "frame_rate");
+            return;
+        }
         const renameId = event.target.dataset.renameVideo;
         if (renameId) {
             const video = currentVideos.find(item => item.id === renameId);
@@ -591,5 +1212,22 @@
     };
 
     $("forcePassword").addEventListener("cancel", event => event.preventDefault());
+    $("conversionDialog").addEventListener("cancel", event => event.preventDefault());
+    $("closePreview").onclick = () => $("previewDialog").close();
+    $("previewDialog").addEventListener("close", () => {
+        const player = $("previewVideo");
+        player.pause();
+        player.removeAttribute("src");
+        player.load();
+    });
+    window.setInterval(() => {
+        if (!document.hidden && !$("appView").classList.contains("hidden") &&
+            !$("videosView").classList.contains("hidden"))
+            void loadStorageStatus();
+    }, 30000);
+    window.setInterval(() => {
+        if (!document.hidden && !$("keysView").classList.contains("hidden"))
+            void loadLiveStatuses();
+    }, 3000);
     start();
 })();

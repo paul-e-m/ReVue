@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        html, body { margin: 0; width: 100%; height: 100%; background: #000; overflow: hidden; }
+        video { position: absolute; inset: 0; width: 100%; height: 100%; display: block;
+            object-fit: contain; object-position: top left; background: #000; }
+        #eventVideo { opacity: 0; pointer-events: none; }
+        #message { position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
+            padding: 24px; color: #fff; font: 600 18px system-ui, Segoe UI, Arial, sans-serif; text-align: center; }
+    </style>
+    <script defer src="/hls.min.js"></script>
+</head>
+<body>
+    <video id="liveVideo" autoplay muted playsinline disablepictureinpicture></video>
+    <video id="eventVideo" autoplay muted playsinline disablepictureinpicture></video>
+    <div id="message">Live stream unavailable</div>
+    <script>
+        const video = document.getElementById("liveVideo");
+        const eventVideo = document.getElementById("eventVideo");
+        const message = document.getElementById("message");
+        const previewSource = "/api/remote-live-preview/index.m3u8";
+        let eventSource = "";
+        let source = previewSource;
+        let hls = null;
+        let eventHls = null;
+        let eventReady = false;
+        let retryTimer = null;
+        const previewAgeSeconds = () => {
+            const date = hls?.playingDate;
+            return date ? (Date.now() - new Date(date).getTime()) / 1000 : null;
+        };
+        window.getLiveDiagnostics = () => ({
+            source: source === eventSource ? "event" : "preview",
+            previewAgeSeconds: previewAgeSeconds(),
+            currentTime: source === eventSource ? eventVideo.currentTime : video.currentTime,
+            liveSyncPosition: (source === eventSource ? eventHls : hls)?.liveSyncPosition,
+            latency: (source === eventSource ? eventHls : hls)?.latency,
+            seekableEnd: (source === eventSource ? eventVideo : video).seekable.length
+                ? (source === eventSource ? eventVideo : video).seekable.end(
+                    (source === eventSource ? eventVideo : video).seekable.length - 1) : null,
+            readyState: (source === eventSource ? eventVideo : video).readyState,
+            paused: (source === eventSource ? eventVideo : video).paused
+        });
+
+        // A new iframe starts from the current rolling preview. Do not reveal
+        // it until it is playing close to the publisher's current position.
+        window.isPreviewReadyForNext = () => {
+            if (source !== previewSource || !hls || video.readyState < 2 || video.seeking)
+                return false;
+            const latency = Number(hls.latency);
+            // Latency is measured on the media timeline, independent of the
+            // Windows clock. There is no catch-up seek while displaying live.
+            return Number.isFinite(latency) && latency <= 10 && !video.paused;
+        };
+
+        // The server uses this delay when it begins the canonical event HLS.
+        window.getLiveDelaySeconds = () => {
+            const delay = Number(hls?.latency);
+            return Number.isFinite(delay) && delay > 0 ? delay : 6;
+        };
+        window.useRecordingEvent = (eventId) => {
+            if (!/^[a-f0-9]{32}$/.test(eventId || ""))
+                throw new Error("No Remote Live recording is active");
+            const nextSource = `/api/remote-live-event/${eventId}/index.m3u8`;
+            if (source === nextSource) return;
+            eventSource = nextSource;
+            source = eventSource;
+            eventReady = false;
+            if (video.readyState >= 2) message.style.display = "none";
+            // Keep the current preview visible until the event has decoded a
+            // frame. The event owns clip time, so clips remain unavailable
+            // during this brief transition.
+            attachEvent();
+        };
+        window.getRecordingPositionSeconds = () =>
+            source === eventSource && eventReady && eventVideo.readyState >= 2
+                ? eventVideo.currentTime : null;
+
+        function showError(error) {
+            message.textContent = error || "Live stream unavailable";
+            message.style.display = "flex";
+        }
+
+        function attach() {
+            if (!window.Hls?.isSupported()) {
+                showError("Live stream playback is unavailable");
+                return;
+            }
+            if (retryTimer !== null) {
+                clearTimeout(retryTimer);
+                retryTimer = null;
+            }
+            hls?.destroy();
+            video.pause();
+            video.removeAttribute("src");
+            video.load();
+            hls = new Hls({
+                lowLatencyMode: false,
+                liveSyncDuration: 5,
+                startPosition: -1,
+                backBufferLength: 20,
+                maxBufferLength: 10
+            });
+            const instance = hls;
+            hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => {}));
+            hls.on(Hls.Events.ERROR, (_, detail) => {
+                if (!detail.fatal || hls !== instance) return;
+                console.warn("Remote Live HLS error", detail.type, detail.details,
+                    detail.response?.code || "", previewSource);
+                // The event is taking over this picture. Retain the last
+                // preview frame rather than briefly resetting it to black.
+                if (source === eventSource) return;
+                if (detail.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
+                else {
+                    if (!eventReady) showError("Live stream reconnecting…");
+                    if (retryTimer === null) retryTimer = setTimeout(attach, 2000);
+                }
+            });
+            hls.loadSource(previewSource);
+            hls.attachMedia(video);
+        }
+
+        function attachEvent() {
+            eventHls?.destroy();
+            eventVideo.pause();
+            eventVideo.removeAttribute("src");
+            eventVideo.load();
+            eventHls = new Hls({
+                lowLatencyMode: false,
+                liveSyncDuration: 5,
+                // Every recording starts at event time zero. Do not seek
+                // forward over footage while the performance is under way.
+                startPosition: 0,
+                backBufferLength: 20,
+                maxBufferLength: 10
+            });
+            const instance = eventHls;
+            instance.on(Hls.Events.MANIFEST_PARSED, () => eventVideo.play().catch(() => {}));
+            instance.on(Hls.Events.ERROR, (_, detail) => {
+                if (!detail.fatal || eventHls !== instance) return;
+                console.warn("Remote Live event HLS error", detail.type, detail.details,
+                    detail.response?.code || "");
+                if (detail.type === Hls.ErrorTypes.MEDIA_ERROR) instance.recoverMediaError();
+                else setTimeout(() => {
+                    if (source === eventSource && eventHls === instance)
+                        // Resume the same event position after transport
+                        // failure, including after the first decoded frame.
+                        // Keep its picture and buffered media while retrying.
+                        instance.startLoad(eventVideo.currentTime);
+                }, 2000);
+            });
+            instance.loadSource(eventSource);
+            instance.attachMedia(eventVideo);
+        }
+
+        function revealEventFrame() {
+            if (source !== eventSource || eventReady || eventVideo.readyState < 2) return;
+            eventReady = true;
+            eventVideo.style.opacity = "1";
+            message.style.display = "none";
+            video.pause();
+            hls?.destroy();
+            hls = null;
+        }
+
+        video.addEventListener("playing", () => {
+            message.style.display = "none";
+        });
+        eventVideo.addEventListener("playing", () => {
+            if (typeof eventVideo.requestVideoFrameCallback === "function")
+                eventVideo.requestVideoFrameCallback(revealEventFrame);
+            else revealEventFrame();
+        });
+        window.addEventListener("load", attach);
+        window.addEventListener("beforeunload", () => {
+            if (retryTimer !== null) clearTimeout(retryTimer);
+            hls?.destroy();
+            hls = null;
+            eventHls?.destroy();
+            eventHls = null;
+        });
+    </script>
+</body>
+</html>

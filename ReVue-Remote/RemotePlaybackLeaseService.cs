@@ -3,13 +3,16 @@ namespace ReVueRemote;
 public sealed class RemotePlaybackLeaseService : BackgroundService
 {
     private readonly RemoteSessionStore _store;
+    private readonly LiveStreamService _live;
     private readonly ILogger<RemotePlaybackLeaseService> _logger;
 
     public RemotePlaybackLeaseService(
         RemoteSessionStore store,
+        LiveStreamService live,
         ILogger<RemotePlaybackLeaseService> logger)
     {
         _store = store;
+        _live = live;
         _logger = logger;
     }
 
@@ -21,6 +24,7 @@ public sealed class RemotePlaybackLeaseService : BackgroundService
             try
             {
                 await _store.ExpireOperatorLeasesAsync(stoppingToken);
+                await _live.StopInactiveEventsAsync();
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {

@@ -36,6 +36,11 @@ public class MediaMtxManager
         }
     }
 
+    public void Stop()
+    {
+        lock (_lock) Stop_NoLock();
+    }
+
     public void EnsureRunning(AppConfig cfg)
     {
         lock (_lock)

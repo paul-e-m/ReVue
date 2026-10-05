@@ -9,6 +9,8 @@ using System.Net;
 using ReVueRemote;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Logging.AddFilter("System.Net.Http.HttpClient.mediamtx-status", LogLevel.Warning);
+builder.Logging.AddFilter("System.Net.Http.HttpClient.live-preview", LogLevel.Warning);
 var configuredStorageRoot = builder.Configuration["ReVueRemote:StorageRoot"]?.Trim();
 var storageRoot = string.IsNullOrWhiteSpace(configuredStorageRoot)
     ? Path.Combine(builder.Environment.ContentRootPath, "data", "sessions")
@@ -24,6 +26,11 @@ builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = 
 builder.Services.Configure<FormOptions>(options => options.MultipartBodyLengthLimit = long.MaxValue);
 builder.Services.AddSingleton<VideoCanonicalizer>();
 builder.Services.AddSingleton<RemoteSessionStore>();
+builder.Services.AddSingleton<LiveStreamService>();
+builder.Services.AddHttpClient("live-preview", client => client.Timeout = TimeSpan.FromSeconds(30));
+builder.Services.AddHttpClient("mediamtx-status", client => client.Timeout = TimeSpan.FromSeconds(3));
+builder.Services.AddSingleton<LiveStreamStatusService>();
+builder.Services.AddSingleton<VideoTransferTracker>();
 builder.Services.AddHostedService<RemotePlaybackLeaseService>();
 builder.Services.AddSingleton<VideoProcessingService>();
 builder.Services.AddHostedService<VideoProcessingService>(
@@ -67,7 +74,22 @@ app.UseForwardedHeaders(new ForwardedHeadersOptions
     KnownProxies = { IPAddress.Loopback, IPAddress.IPv6Loopback }
 });
 app.UseDefaultFiles();
-app.UseStaticFiles();
+app.UseStaticFiles(new StaticFileOptions
+{
+    OnPrepareResponse = fileContext =>
+    {
+        var assetPath = fileContext.Context.Request.Path.Value;
+        if (string.Equals(assetPath, "/index.html", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(assetPath, "/app.js", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(assetPath, "/config.html", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(assetPath, "/config.js", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(assetPath, "/config.css", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(assetPath, "/video-cache-sw.js", StringComparison.OrdinalIgnoreCase))
+        {
+            fileContext.Context.Response.Headers["Cache-Control"] = "no-store";
+        }
+    }
+});
 app.Use(async (context, next) =>
 {
     var isSessionApi = context.Request.Path.StartsWithSegments("/api/sessions");
@@ -139,9 +161,20 @@ PlaybackState SnapshotForDelivery(PlaybackState state, bool advancePlayingPositi
 
     return new PlaybackState
     {
+        SourceType = state.SourceType,
         Revision = state.Revision,
+        CommunicationStatus = new RemoteCommunicationStatus
+        {
+            JudgesReady = state.CommunicationStatus?.JudgesReady == true,
+            TechPanelReady = state.CommunicationStatus?.TechPanelReady == true,
+            CompetitorScored = state.CommunicationStatus?.CompetitorScored == true
+        },
+        OperatorConnected = !string.IsNullOrWhiteSpace(state.OperatorInstanceId) &&
+            !string.Equals(state.Mode, "operator-offline", StringComparison.OrdinalIgnoreCase) &&
+            state.OperatorLeaseExpiresAtUnixMs > nowUnixMs,
         VideoId = state.VideoId,
         VideoFileName = state.VideoFileName,
+        FramesPerSecond = state.FramesPerSecond,
         PositionSeconds = positionSeconds,
         TimelinePositionSeconds = timelinePositionSeconds,
         TimelineDurationSeconds = state.TimelineDurationSeconds,
@@ -179,10 +212,48 @@ async Task<IResult?> RequireRinkManagementAsync(string code, HttpContext context
 
 app.MapGet("/api/health", () => Results.Ok(new { status = "ok", service = "ReVue-Remote" }));
 
-app.MapGet("/config", () => Results.File(
-    Path.Combine(app.Environment.WebRootPath, "config.html"),
-    "text/html; charset=utf-8"));
+// MediaMTX sends this callback for each RTMP publisher and RTSP/HLS reader.
+// Its shared token must be configured on both services and must not be exposed
+// through the public reverse proxy.
+app.MapPost("/api/internal/mediamtx-auth", async (
+    MediaMtxAuthRequest request, HttpContext context, CloudAccountStore accounts) =>
+{
+    var configuredToken = app.Configuration["ReVueRemote:MediaAuthToken"];
+    var suppliedToken = context.Request.Query["token"].ToString();
+    if (string.IsNullOrWhiteSpace(configuredToken) || configuredToken.Length < 32 ||
+        !System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(
+            System.Text.Encoding.UTF8.GetBytes(configuredToken),
+            System.Text.Encoding.UTF8.GetBytes(suppliedToken)))
+        return Results.Unauthorized();
+    if (!RemoteSessionStore.IsValidSessionCode(request.Path) ||
+        await accounts.GetKeyModeAsync(request.Path, context.RequestAborted) != SessionKeyModes.Live)
+        return Results.Unauthorized();
+    if (string.Equals(request.Action, "publish", StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(request.Protocol, "rtmp", StringComparison.OrdinalIgnoreCase))
+        return await accounts.AuthorizeLivePublisherAsync(request.Path, request.Password, context.RequestAborted)
+            ? Results.Ok() : Results.Unauthorized();
+    if (string.Equals(request.Action, "read", StringComparison.OrdinalIgnoreCase) &&
+        (string.Equals(request.Protocol, "rtsp", StringComparison.OrdinalIgnoreCase) ||
+         string.Equals(request.Protocol, "hls", StringComparison.OrdinalIgnoreCase)))
+        return Results.Ok();
+    return Results.Unauthorized();
+});
+
+app.MapGet("/config", (HttpContext context) =>
+{
+    context.Response.Headers["Cache-Control"] = "no-store";
+    return Results.File(
+        Path.Combine(app.Environment.WebRootPath, "config.html"),
+        "text/html; charset=utf-8");
+});
 app.MapGet("/upload", () => Results.Redirect("/config", permanent: true));
+
+app.MapGet("/api/manage/storage", (HttpContext context, RemoteSessionStore store) =>
+{
+    context.Response.Headers["Cache-Control"] = "no-store";
+    var status = store.GetStorageStatus();
+    return status is null ? Results.StatusCode(StatusCodes.Status503ServiceUnavailable) : Results.Ok(status);
+}).RequireAuthorization();
 
 app.MapPost("/api/auth/login", async (LoginRequest request, HttpContext context, CloudAccountStore accounts) =>
 {
@@ -238,18 +309,115 @@ app.MapGet("/api/manage/keys", async (CloudAccountStore accounts, HttpContext co
         CurrentUserId(context),
         IsAdmin(context),
         context.RequestAborted))).RequireAuthorization();
+app.MapGet("/api/manage/live-streams", async (
+    CloudAccountStore accounts, LiveStreamStatusService streams,
+    RemoteSessionStore store, HttpContext context) =>
+{
+    context.Response.Headers["Cache-Control"] = "no-store";
+    var keys = await accounts.ListManagedKeysAsync(
+        CurrentUserId(context), IsAdmin(context), context.RequestAborted);
+    return Results.Ok(await streams.GetAsync(
+        keys.Where(key => key.Mode == SessionKeyModes.Live), store,
+        context.RequestAborted));
+}).RequireAuthorization();
 app.MapPost("/api/manage/keys", async (CreateKeyRequest request, CloudAccountStore accounts, HttpContext context) =>
 {
-    try { return Results.Ok(await accounts.CreateKeyAsync(request.Code, CurrentUserId(context), context.RequestAborted)); }
+    try
+    {
+        var key = await accounts.CreateKeyAsync(
+            request.Code, request.Mode, request.PublishPassword,
+            CurrentUserId(context), context.RequestAborted);
+        return Results.Ok(new
+        {
+            key.Code,
+            mode = SessionKeyModes.Normalize(key.Mode),
+            hasPublishPassword = !string.IsNullOrEmpty(key.PublishPasswordHash),
+            liveFeedActive = key.LiveFeedActive
+        });
+    }
     catch (Exception ex) { return AccountError(ex); }
 }).RequireAuthorization();
-app.MapDelete("/api/manage/keys/{code}", async (
-    string code, CloudAccountStore accounts, RemoteSessionStore store, HttpContext context) =>
+app.MapPut("/api/manage/keys/{code}/live-feed", async (
+    string code, UpdateLiveFeedStateRequest request, CloudAccountStore accounts,
+    LiveStreamService live, LiveStreamStatusService streams,
+    HttpContext context) =>
 {
     try
     {
         var denied = await RequireRinkManagementAsync(code, context, accounts);
         if (denied is not null) return denied;
+        if (request.Active is null) return Results.BadRequest("Choose Active or Paused for this live feed.");
+        var result = await accounts.SetLiveFeedActiveAsync(
+            code, request.Active.Value, CurrentUserId(context), IsAdmin(context), context.RequestAborted);
+        if (!request.Active.Value)
+            await Task.WhenAll(
+                live.StopAllForRinkAsync(code),
+                streams.KickPublisherAsync(code, context.RequestAborted));
+        return Results.Ok(result);
+    }
+    catch (UnauthorizedAccessException) { return Results.Forbid(); }
+    catch (Exception ex) { return AccountError(ex); }
+}).RequireAuthorization();
+app.MapPut("/api/manage/keys/{code}", async (
+    string code, RenameKeyRequest request, CloudAccountStore accounts, RemoteSessionStore store,
+    LiveStreamService live, HttpContext context) =>
+{
+    try
+    {
+        var denied = await RequireRinkManagementAsync(code, context, accounts);
+        if (denied is not null) return denied;
+        if (await accounts.GetKeyModeAsync(code, context.RequestAborted) == SessionKeyModes.Live &&
+            !string.Equals(code, request.Code, StringComparison.OrdinalIgnoreCase))
+            await live.StopAllForRinkAsync(code);
+        var key = await accounts.RenameKeyAsync(
+            code, request.Code, CurrentUserId(context), IsAdmin(context), store, context.RequestAborted);
+        return Results.Ok(new { key.Code, mode = SessionKeyModes.Normalize(key.Mode) });
+    }
+    catch (UnauthorizedAccessException) { return Results.Forbid(); }
+    catch (Exception ex) { return AccountError(ex); }
+}).RequireAuthorization();
+app.MapGet("/api/manage/keys/{code}/media", async (
+    string code, CloudAccountStore accounts, HttpContext context) =>
+{
+    try
+    {
+        context.Response.Headers["Cache-Control"] = "no-store";
+        var denied = await RequireRinkManagementAsync(code, context, accounts);
+        if (denied is not null) return denied;
+        return Results.Ok(await accounts.GetKeyMediaAsync(
+            code, CurrentUserId(context), IsAdmin(context), context.RequestAborted));
+    }
+    catch (UnauthorizedAccessException) { return Results.Forbid(); }
+    catch (Exception ex) { return AccountError(ex); }
+}).RequireAuthorization();
+app.MapPut("/api/manage/keys/{code}/media", async (
+    string code, UpdateKeyMediaRequest request, CloudAccountStore accounts,
+    HttpContext context) =>
+{
+    try
+    {
+        var denied = await RequireRinkManagementAsync(code, context, accounts);
+        if (denied is not null) return denied;
+        if (request.Mode is not null &&
+            !string.Equals(request.Mode, SessionKeyModes.Live, StringComparison.OrdinalIgnoreCase))
+            return Results.BadRequest("Rink ID type cannot be changed after creation.");
+        var result = await accounts.UpdateKeyMediaAsync(
+            code, request.PublishPassword,
+            CurrentUserId(context), IsAdmin(context), context.RequestAborted);
+        return Results.Ok(result);
+    }
+    catch (UnauthorizedAccessException) { return Results.Forbid(); }
+    catch (Exception ex) { return AccountError(ex); }
+}).RequireAuthorization();
+app.MapDelete("/api/manage/keys/{code}", async (
+    string code, CloudAccountStore accounts, RemoteSessionStore store,
+    LiveStreamService live, HttpContext context) =>
+{
+    try
+    {
+        var denied = await RequireRinkManagementAsync(code, context, accounts);
+        if (denied is not null) return denied;
+        await live.StopAllForRinkAsync(code);
         await store.DeleteSessionAsync(code, context.RequestAborted);
         await accounts.DeleteKeyAsync(code, CurrentUserId(context), IsAdmin(context), context.RequestAborted);
         return Results.Ok();
@@ -269,7 +437,12 @@ app.MapGet("/api/sessions/{sessionCode}/validate", async (
         cancellationToken => accounts.KeyExistsAsync(sessionCode, cancellationToken),
         context.RequestAborted);
     if (decision.IsValid)
-        return Results.Ok(new { valid = true, code = CloudAccountStore.NormalizeKey(sessionCode) });
+        return Results.Ok(new
+        {
+            valid = true,
+            code = CloudAccountStore.NormalizeKey(sessionCode),
+            mode = await accounts.GetKeyModeAsync(sessionCode, context.RequestAborted)
+        });
 
     context.Response.Headers["Retry-After"] = decision.RetryAfterSeconds.ToString();
     return Results.Json(new
@@ -292,7 +465,12 @@ app.MapGet("/api/sessions/{sessionCode}/videos", async (
     try
     {
         if (!await accounts.KeyExistsAsync(sessionCode, context.RequestAborted)) return Results.NotFound();
-        return Results.Ok(await store.ListVideosAsync(sessionCode, context.RequestAborted));
+        var manage = context.User.Identity?.IsAuthenticated == true &&
+            await accounts.CanManageKeyAsync(
+                sessionCode, CurrentUserId(context), IsAdmin(context), context.RequestAborted);
+        return Results.Ok(manage
+            ? await store.ListVideosWithMetadataAsync(sessionCode, context.RequestAborted)
+            : await store.ListVideosAsync(sessionCode, context.RequestAborted));
     }
     catch (Exception ex)
     {
@@ -367,9 +545,37 @@ app.MapPost("/api/sessions/{sessionCode}/uploads/{uploadId}/complete", async (
         if (denied is not null) return denied;
         var status = await store.PrepareUploadForProcessingAsync(
             sessionCode, uploadId, context.RequestAborted);
-        if (string.Equals(status.Stage, "processing", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(status.Stage, RemoteUploadStages.Processing, StringComparison.OrdinalIgnoreCase))
             processing.Queue(RemoteSessionStore.NormalizeSessionCode(sessionCode), uploadId);
         return Results.Accepted(value: status);
+    }
+    catch (Exception ex) { return AccountError(ex); }
+}).RequireAuthorization();
+
+app.MapPost("/api/sessions/{sessionCode}/videos/{videoId}/transcode", async (
+    string sessionCode, string videoId, VideoTranscodeRequest request, HttpContext context,
+    RemoteSessionStore store, VideoProcessingService processing, CloudAccountStore accounts) =>
+{
+    try
+    {
+        var denied = await RequireRinkManagementAsync(sessionCode, context, accounts);
+        if (denied is not null) return denied;
+        var status = await store.BeginVideoTranscodeAsync(
+            sessionCode, videoId, request.Mode, context.RequestAborted);
+        processing.Queue(RemoteSessionStore.NormalizeSessionCode(sessionCode), status.UploadId);
+        return Results.Accepted(value: status);
+    }
+    catch (Exception ex) { return AccountError(ex); }
+}).RequireAuthorization();
+
+app.MapGet("/api/sessions/{sessionCode}/transcodes", async (
+    string sessionCode, HttpContext context, RemoteSessionStore store, CloudAccountStore accounts) =>
+{
+    try
+    {
+        var denied = await RequireRinkManagementAsync(sessionCode, context, accounts);
+        if (denied is not null) return denied;
+        return Results.Ok(await store.ListActiveVideoTranscodesAsync(sessionCode, context.RequestAborted));
     }
     catch (Exception ex) { return AccountError(ex); }
 }).RequireAuthorization();
@@ -465,9 +671,11 @@ app.MapDelete("/api/sessions/{sessionCode}/videos/{videoId}", async (
 app.MapGet("/api/sessions/{sessionCode}/videos/{videoId}/content", async (
     string sessionCode,
     string videoId,
+    string? viewer,
     HttpContext context,
     RemoteSessionStore store,
-    CloudAccountStore accounts) =>
+    CloudAccountStore accounts,
+    VideoTransferTracker transferTracker) =>
 {
     try
     {
@@ -475,8 +683,23 @@ app.MapGet("/api/sessions/{sessionCode}/videos/{videoId}/content", async (
         var result = await store.FindVideoAsync(sessionCode, videoId, context.RequestAborted);
         if (!result.HasValue) return Results.NotFound();
         context.Response.Headers["Cache-Control"] = "private, max-age=31536000, immutable";
-        return Results.File(
+        var source = new FileStream(
             result.Value.Path,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.Read,
+            bufferSize: 1024 * 1024,
+            FileOptions.Asynchronous | FileOptions.SequentialScan);
+        var viewerKey = TransferViewerIdentity.RateLimitKey(context);
+        Stream stream = new TrackingReadStream(
+            source,
+            bytes => { if (!string.IsNullOrWhiteSpace(viewer) && viewer.Length <= 64)
+                transferTracker.Record(sessionCode, videoId, viewer, bytes); },
+            transferTracker,
+            viewerKey);
+        context.Response.RegisterForDispose(stream);
+        return Results.Stream(
+            stream,
             contentType: "video/mp4",
             fileDownloadName: null,
             enableRangeProcessing: true);
@@ -485,6 +708,102 @@ app.MapGet("/api/sessions/{sessionCode}/videos/{videoId}/content", async (
     {
         return Results.NotFound();
     }
+});
+
+app.MapGet("/api/sessions/{sessionCode}/videos/{videoId}/preview", async (
+    string sessionCode,
+    string videoId,
+    HttpContext context,
+    RemoteSessionStore store,
+    CloudAccountStore accounts,
+    VideoTransferTracker transferTracker) =>
+{
+    try
+    {
+        var denied = await RequireRinkManagementAsync(sessionCode, context, accounts);
+        if (denied is not null) return denied;
+        var result = await store.FindVideoAsync(sessionCode, videoId, context.RequestAborted);
+        if (!result.HasValue) return Results.NotFound();
+        context.Response.Headers["Cache-Control"] = "private, no-store";
+        var source = new FileStream(
+            result.Value.Path,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.Read,
+            bufferSize: 1024 * 1024,
+            FileOptions.Asynchronous | FileOptions.SequentialScan);
+        var viewerKey = TransferViewerIdentity.RateLimitKey(context);
+        Stream stream = new TrackingReadStream(source, _ => { }, transferTracker, viewerKey);
+        context.Response.RegisterForDispose(stream);
+        return Results.Stream(
+            stream,
+            contentType: "video/mp4",
+            fileDownloadName: null,
+            enableRangeProcessing: true);
+    }
+    catch (Exception ex) { return AccountError(ex); }
+}).RequireAuthorization();
+
+app.MapGet("/api/sessions/{sessionCode}/videos/{videoId}/thumbnail", async (
+    string sessionCode,
+    string videoId,
+    HttpContext context,
+    RemoteSessionStore store,
+    CloudAccountStore accounts) =>
+{
+    try
+    {
+        var denied = await RequireRinkManagementAsync(sessionCode, context, accounts);
+        if (denied is not null) return denied;
+        var path = await store.FindVideoThumbnailAsync(sessionCode, videoId, context.RequestAborted);
+        if (path is null) return Results.NotFound();
+        context.Response.Headers["Cache-Control"] = "private, max-age=31536000, immutable";
+        return Results.File(path, "image/jpeg");
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogWarning(ex, "Could not serve thumbnail for video {VideoId} in Rink ID {SessionCode}", videoId, sessionCode);
+        return Results.Problem("The video thumbnail could not be generated.");
+    }
+}).RequireAuthorization();
+
+app.MapGet("/api/sessions/{sessionCode}/videos/{videoId}/transfer", async (
+    string sessionCode,
+    string videoId,
+    string? viewer,
+    HttpContext context,
+    CloudAccountStore accounts,
+    VideoTransferTracker transferTracker) =>
+{
+    if (string.IsNullOrWhiteSpace(viewer) || viewer.Length > 64 ||
+        !await accounts.KeyExistsAsync(sessionCode, context.RequestAborted))
+        return Results.NotFound();
+    return Results.Ok(new { bytes = transferTracker.GetTransferredBytes(sessionCode, videoId, viewer) });
+});
+
+app.MapGet("/api/sessions/{sessionCode}/transfer", async (
+    string sessionCode,
+    HttpContext context,
+    CloudAccountStore accounts,
+    VideoTransferTracker transferTracker) =>
+{
+    var viewer = TransferViewerIdentity.QueryToken(context);
+    if (viewer is null || !await accounts.KeyExistsAsync(sessionCode, context.RequestAborted))
+        return Results.NotFound();
+    context.Response.Headers["Cache-Control"] = "no-store";
+    return Results.Ok(new { bytes = transferTracker.GetSessionTransferredBytes(sessionCode, viewer) });
+});
+
+app.MapPost("/api/sessions/{sessionCode}/viewer-cache/clear", async (
+    string sessionCode,
+    HttpContext context,
+    CloudAccountStore accounts) =>
+{
+    if (!await accounts.KeyExistsAsync(sessionCode, context.RequestAborted)) return Results.NotFound();
+    // ReVue-Remote keeps only one current recording per viewer. Clearing the
+    // browser's HTTP cache here releases the prior recording after Next.
+    context.Response.Headers["Clear-Site-Data"] = "\"cache\"";
+    return Results.NoContent();
 });
 
 app.MapGet("/api/sessions/{sessionCode}/playback", async (
@@ -505,20 +824,118 @@ app.MapGet("/api/sessions/{sessionCode}/playback", async (
     }
 });
 
+app.MapPut("/api/sessions/{sessionCode}/communication-status", async (
+    string sessionCode, SetRemoteCommunicationStatusRequest request, HttpContext context,
+    RemoteSessionStore store, CloudAccountStore accounts) =>
+{
+    if (!await accounts.KeyExistsAsync(sessionCode, context.RequestAborted)) return Results.NotFound();
+    try
+    {
+        var state = await store.SetCommunicationStatusAsync(
+            sessionCode, request.ViewerSessionId, request.Indicator,
+            request.Active, context.RequestAborted);
+        return Results.Ok(new
+        {
+            state.CommunicationStatus.JudgesReady,
+            state.CommunicationStatus.TechPanelReady,
+            state.CommunicationStatus.CompetitorScored
+        });
+    }
+    catch (UnauthorizedAccessException ex) { return Results.Json(new { error = ex.Message }, statusCode: 403); }
+    catch (ArgumentException ex) { return Results.BadRequest(new { error = ex.Message }); }
+});
+
+app.MapGet("/api/sessions/{sessionCode}/live/preview/{fileName}", async (
+    string sessionCode, string fileName, HttpContext context, CloudAccountStore accounts,
+    IHttpClientFactory clients, VideoTransferTracker transferTracker) =>
+{
+    if (await accounts.GetKeyModeAsync(sessionCode, context.RequestAborted) != SessionKeyModes.Live ||
+        fileName.Length > 160 || fileName is "." or ".." ||
+        fileName.Any(ch => !(char.IsAsciiLetterOrDigit(ch) || ch is '.' or '_' or '-')))
+        return Results.NotFound();
+    var baseUrl = (app.Configuration["ReVueRemote:MediaMtxHlsBase"] ?? "http://127.0.0.1:8888").TrimEnd('/');
+    var path = $"{baseUrl}/{RemoteSessionStore.NormalizeSessionCode(sessionCode)}/{fileName}{context.Request.QueryString}";
+    using var upstream = await clients.CreateClient("live-preview").GetAsync(
+        path, HttpCompletionOption.ResponseHeadersRead, context.RequestAborted);
+    if (!upstream.IsSuccessStatusCode) return Results.StatusCode((int)upstream.StatusCode);
+    context.Response.ContentType = fileName.EndsWith(".m3u8", StringComparison.OrdinalIgnoreCase)
+        ? "application/vnd.apple.mpegurl" : "video/mp4";
+    context.Response.Headers["Cache-Control"] = "no-store";
+    if (fileName.EndsWith(".m3u8", StringComparison.OrdinalIgnoreCase))
+    {
+        var playlist = await upstream.Content.ReadAsStringAsync(context.RequestAborted);
+        playlist = playlist.Replace($"{baseUrl}/{RemoteSessionStore.NormalizeSessionCode(sessionCode)}/",
+            $"/api/sessions/{RemoteSessionStore.NormalizeSessionCode(sessionCode)}/live/preview/",
+            StringComparison.Ordinal);
+        playlist = TransferViewerIdentity.AddViewerToPlaylist(
+            playlist, TransferViewerIdentity.QueryToken(context));
+        await context.Response.WriteAsync(playlist, context.RequestAborted);
+    }
+    else
+    {
+        var viewer = TransferViewerIdentity.QueryToken(context);
+        await using var body = new TrackingReadStream(
+            await upstream.Content.ReadAsStreamAsync(context.RequestAborted),
+            bytes => { if (viewer is not null) transferTracker.RecordSession(sessionCode, viewer, bytes); },
+            transferTracker, TransferViewerIdentity.RateLimitKey(context));
+        await body.CopyToAsync(context.Response.Body, context.RequestAborted);
+    }
+    return Results.Empty;
+});
+
+app.MapGet("/api/sessions/{sessionCode}/live/events/{eventId}/{fileName}", async (
+    string sessionCode, string eventId, string fileName, HttpContext context,
+    CloudAccountStore accounts, LiveStreamService live, VideoTransferTracker transferTracker) =>
+{
+    if (await accounts.GetKeyModeAsync(sessionCode, context.RequestAborted) != SessionKeyModes.Live)
+        return Results.NotFound();
+    try
+    {
+        var path = live.GetEventFile(sessionCode, eventId, fileName);
+        if (path is null) return Results.NotFound();
+        var playlist = fileName.EndsWith(".m3u8", StringComparison.OrdinalIgnoreCase);
+        context.Response.Headers["Cache-Control"] = playlist ? "no-store" : "public, max-age=86400, immutable";
+        if (playlist)
+        {
+            var text = await File.ReadAllTextAsync(path, context.RequestAborted);
+            return Results.Text(TransferViewerIdentity.AddViewerToPlaylist(
+                text, TransferViewerIdentity.QueryToken(context)), "application/vnd.apple.mpegurl");
+        }
+        var viewer = TransferViewerIdentity.QueryToken(context);
+        var source = new TrackingReadStream(File.OpenRead(path),
+            bytes => { if (viewer is not null) transferTracker.RecordSession(sessionCode, viewer, bytes); },
+            transferTracker,
+            TransferViewerIdentity.RateLimitKey(context));
+        return Results.File(source, "video/mp4", enableRangeProcessing: true);
+    }
+    catch (ArgumentException) { return Results.BadRequest(); }
+});
+
 app.MapPost("/api/sessions/{sessionCode}/playback", async (
     string sessionCode,
     PlaybackCommand command,
     HttpContext context,
     RemoteSessionStore store,
+    LiveStreamService live,
     CloudAccountStore accounts) =>
 {
     try
     {
-        if (!await accounts.KeyExistsAsync(sessionCode, context.RequestAborted)) return Results.NotFound("The Rink ID does not exist.");
-        return Results.Ok(await store.UpdatePlaybackStateAsync(
-            sessionCode,
-            command,
-            context.RequestAborted));
+        var rinkMode = await accounts.GetKeyModeAsync(sessionCode, context.RequestAborted);
+        if (rinkMode is null) return Results.NotFound("The Rink ID does not exist.");
+        if (!string.Equals(rinkMode, SessionKeyModes.Normalize(command.SourceType), StringComparison.Ordinal))
+            return Results.BadRequest("The VRO source mode does not match this Rink ID.");
+        var next = await store.UpdatePlaybackStateAsync(sessionCode, command, context.RequestAborted,
+            rinkMode == SessionKeyModes.Live ? async (prior, accepted) =>
+            {
+                if (accepted.Mode is "preparing" or "recording")
+                    await live.StartEventAsync(sessionCode, accepted.VideoId, command.LiveDelaySeconds);
+                if (accepted.Mode == "replay" && prior.Mode is "recording" or "preparing")
+                    await live.FinishEventAsync(sessionCode, accepted.VideoId, accepted.TimelineDurationSeconds);
+                if (prior.VideoId.Length > 0 && prior.VideoId != accepted.VideoId)
+                    await live.DeleteEventAsync(sessionCode, prior.VideoId);
+            } : null);
+        return Results.Ok(next);
     }
     catch (FileNotFoundException ex)
     {
@@ -562,27 +979,34 @@ app.MapGet("/api/sessions/{sessionCode}/events", async (
         await context.Response.Body.FlushAsync(context.RequestAborted);
     }
 
-    using var subscription = store.Subscribe(sessionCode);
+    using var subscription = store.Subscribe(sessionCode, context.Request.Query["role"].ToString());
+    await context.Response.WriteAsync("event: viewer-session\n", context.RequestAborted);
+    await context.Response.WriteAsync($"data: {JsonSerializer.Serialize(subscription.Id)}\n\n", context.RequestAborted);
+    await context.Response.Body.FlushAsync(context.RequestAborted);
     await WriteStateAsync(
         await store.GetPlaybackStateAsync(sessionCode, context.RequestAborted),
         advancePlayingPosition: true);
 
     try
     {
+        Task<bool>? waitForState = null;
         while (!context.RequestAborted.IsCancellationRequested)
         {
-            var waitForState = subscription.Reader.WaitToReadAsync(context.RequestAborted).AsTask();
-            var heartbeat = Task.Delay(TimeSpan.FromSeconds(15), context.RequestAborted);
+            waitForState ??= subscription.Reader.WaitToReadAsync(context.RequestAborted).AsTask();
+            var heartbeat = Task.Delay(TimeSpan.FromSeconds(3), context.RequestAborted);
             var completed = await Task.WhenAny(waitForState, heartbeat);
 
             if (completed == heartbeat)
             {
-                await context.Response.WriteAsync(": heartbeat\n\n", context.RequestAborted);
-                await context.Response.Body.FlushAsync(context.RequestAborted);
+                // Refresh the connection metric without changing the media
+                // lifecycle when the VRO misses a control heartbeat.
+                await WriteStateAsync(await store.GetPlaybackStateAsync(sessionCode, context.RequestAborted),
+                    advancePlayingPosition: false);
                 continue;
             }
 
             if (!await waitForState) break;
+            waitForState = null;
             while (subscription.Reader.TryRead(out var state))
                 await WriteStateAsync(state, advancePlayingPosition: false);
         }
@@ -594,3 +1018,11 @@ app.MapGet("/api/sessions/{sessionCode}/events", async (
 
 app.MapFallbackToFile("index.html");
 app.Run();
+
+public sealed class MediaMtxAuthRequest
+{
+    public string Action { get; set; } = "";
+    public string Path { get; set; } = "";
+    public string Protocol { get; set; } = "";
+    public string Password { get; set; } = "";
+}

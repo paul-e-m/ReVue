@@ -1,0 +1,24 @@
+# Install MediaMTX on the ReVue-Remote host. Copy this file to a private path,
+# replace the auth URL token, and keep it readable only by the service account.
+# The same token must be set as ReVueRemote__MediaAuthToken for ReVue-Remote.
+logLevel: info
+authMethod: http
+authHTTPAddress: http://127.0.0.1:5080/api/internal/mediamtx-auth?token=REPLACE_WITH_A_RANDOM_64_CHARACTER_HEX_VALUE
+authHTTPExclude:
+  - action: api
+api: yes
+apiAddress: 127.0.0.1:9997
+rtmp: yes
+rtmpAddress: :1935
+rtsp: yes
+rtspAddress: :8554
+rtspTransports: [tcp]
+hls: yes
+hlsAddress: 127.0.0.1:8888
+hlsVariant: fmp4
+hlsSegmentDuration: 1s
+hlsSegmentCount: 20
+hlsAlwaysRemux: yes
+paths:
+  all_others:
+    source: publisher

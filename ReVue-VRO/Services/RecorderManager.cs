@@ -142,7 +142,8 @@ public class RecorderManager
         }
     }
 
-    public async Task<bool> StartRecordingAsync(AppConfig cfg, double? demoStartSeconds = null)
+    public async Task<bool> StartRecordingAsync(AppConfig cfg, double? demoStartSeconds = null,
+        int? liveDelaySeconds = null)
     {
         Process? startedProcess = null;
         CancellationTokenSource? startMonitorCts = null;
@@ -165,7 +166,7 @@ public class RecorderManager
             var highResGop = GetConfiguredGop(cfg);
             var lowResGop = GetConfiguredLowResGop(cfg);
             var encoderName = ResolveEncoderName(ffmpegExe, cfg, highResGop);
-            var inputArgs = BuildInputArgs(cfg, demoStartSeconds);
+            var inputArgs = BuildInputArgs(cfg, demoStartSeconds, liveDelaySeconds);
 
             var args =
                 $"-hide_banner -loglevel warning -nostats -stats_period 0.1 -progress pipe:1 -y " +
@@ -481,9 +482,17 @@ public class RecorderManager
     }
 
     // Input and output argument builders
-    private string BuildInputArgs(AppConfig cfg, double? demoStartSeconds = null)
+    private string BuildInputArgs(AppConfig cfg, double? demoStartSeconds = null,
+        int? liveDelaySeconds = null)
     {
-        if (string.Equals(cfg.VideoSourceMode, "Remote", StringComparison.OrdinalIgnoreCase))
+        if (RemotePlaybackManager.IsRemoteLiveMode(cfg))
+            // Record the same event HLS timeline used by the VRO preview and
+            // remote replay. Its event playlist retains segment zero. -re would
+            // make the recorder fall behind any segments already available.
+            return "-live_start_index 0 -analyzeduration 0 -probesize 32768 " +
+                $"-i \"{RemotePlaybackManager.BuildLiveEventUri(cfg)}\" ";
+
+        if (string.Equals(cfg.VideoSourceMode, "RemoteRecorded", StringComparison.OrdinalIgnoreCase))
         {
             return BuildRemoteInputArgs(cfg, demoStartSeconds);
         }

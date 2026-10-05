@@ -83,6 +83,7 @@ public class AppConfig
     [JsonPropertyOrder(21)]
     public string ManualHalfwayTimingPreset { get; set; } = "None";
 
+    // Canonical values: RTSP, RemoteLive, RemoteRecorded, Demo.
     // VideoSourceMode supersedes DemoMode while keeping DemoMode in the
     // serialized configuration for compatibility with earlier releases.
     [JsonPropertyOrder(22)]
@@ -96,6 +97,9 @@ public class AppConfig
 
     [JsonPropertyOrder(25)]
     public string RemoteVideoId { get; set; } = "";
+
+    // Set at Record in Remote Live mode and cleared at Next Competitor.
+    public string RemoteLiveEventId { get; set; } = "";
 
     [JsonPropertyOrder(26)]
     public DateTimeOffset? RemoteVideoSelectedAtUtc { get; set; }

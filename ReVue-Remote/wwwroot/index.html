@@ -4,17 +4,12 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>ReVue-Remote</title>
-    <link rel="stylesheet" href="styles.css?v=20260930-clean-player-layout" />
+        <link rel="stylesheet" href="styles.css?v=20261004-recorded-offline" />
 </head>
 <body>
     <div id="pageFrame" class="pageFrame">
     <main class="shell">
         <form id="controls" class="playerControls" autocomplete="off">
-                <div id="reviewIndicator" class="reviewIndicator hidden" role="status" aria-live="polite">
-                    <span class="reviewIndicatorDot" aria-hidden="true"></span>
-                    <span id="reviewIndicatorText"></span>
-                </div>
-
                 <fieldset class="sessionControl controlGroup">
                     <legend class="visuallyHidden" data-i18n="rinkId">Rink ID</legend>
                     <span class="controlLabel" aria-hidden="true" data-i18n="rinkId">Rink ID</span>
@@ -35,42 +30,70 @@
                     </div>
                 </fieldset>
 
-                <fieldset class="panelControl controlGroup">
-                    <legend class="visuallyHidden" data-i18n="role">Role</legend>
-                    <span class="controlLabel" aria-hidden="true" data-i18n="role">Role</span>
-                    <input id="panelType" name="panelType" type="hidden" value="technical" />
-                    <button id="panelTypeButton" class="panelTypeButton" type="button" aria-haspopup="listbox" aria-expanded="false">
-                        <span id="panelTypeLabel">Technical</span>
-                        <span class="panelTypeSizer" aria-hidden="true" data-i18n="technicalPanel">Technical</span>
-                        <span class="panelChevron" aria-hidden="true">⌄</span>
-                    </button>
-                    <div id="panelTypeMenu" class="panelTypeMenu hidden" role="listbox" aria-label="Viewer panel type" data-i18n-aria="viewerRole">
-                        <button type="button" role="option" data-panel-type="judging" data-i18n="judge">Judge</button>
-                        <button type="button" role="option" data-panel-type="referee" data-i18n="referee">Referee</button>
-                        <button type="button" role="option" data-panel-type="technical" data-i18n="technicalPanel">Technical</button>
+                <div class="roleReviewGroup">
+                    <fieldset class="panelControl controlGroup">
+                        <legend class="visuallyHidden" data-i18n="role">Role</legend>
+                        <span class="controlLabel" aria-hidden="true" data-i18n="role">Role</span>
+                        <input id="panelType" name="panelType" type="hidden" value="technical-controller" />
+                        <button id="panelTypeButton" class="panelTypeButton" type="button" aria-haspopup="listbox" aria-expanded="false">
+                            <span id="panelTypeLabel">Technical Controller</span>
+                            <span class="panelTypeSizer" aria-hidden="true" data-i18n="technicalController">Technical Controller</span>
+                            <span class="panelChevron" aria-hidden="true">⌄</span>
+                        </button>
+                        <div id="panelTypeMenu" class="panelTypeMenu hidden" role="listbox" aria-label="Viewer panel type" data-i18n-aria="viewerRole">
+                            <button type="button" role="option" data-panel-type="announcer" data-i18n="announcer">Announcer</button>
+                            <button type="button" role="option" data-panel-type="data-input-operator" data-i18n="dataInputOperator">Data Input Operator</button>
+                            <button type="button" role="option" data-panel-type="data-specialist" data-i18n="dataSpecialist">Data Specialist</button>
+                            <button type="button" role="option" data-panel-type="judging" data-i18n="judge">Judge</button>
+                            <button type="button" role="option" data-panel-type="referee" data-i18n="referee">Referee</button>
+                            <button type="button" role="option" data-panel-type="technical-controller" data-i18n="technicalController">Technical Controller</button>
+                            <button type="button" role="option" data-panel-type="technical-specialist-1" data-i18n="technicalSpecialist1">Technical Specialist 1</button>
+                            <button type="button" role="option" data-panel-type="technical-specialist-2" data-i18n="technicalSpecialist2">Technical Specialist 2</button>
+                            <button type="button" role="option" data-panel-type="video-replay-operator" data-i18n="videoReplayOperator">Video Replay Operator</button>
+                        </div>
+                    </fieldset>
+                    <div id="reviewIndicator" class="reviewIndicator hidden" role="status" aria-live="polite">
+                        <span class="reviewIndicatorDot" aria-hidden="true"></span>
+                        <span id="reviewIndicatorText"></span>
                     </div>
-                </fieldset>
+                </div>
 
-                <div class="languageControl">
-                    <span class="languageLabel" data-i18n="language">Language</span>
-                    <input id="language" name="language" type="hidden" value="en" />
-                    <button id="languageButton" class="languageButton" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Language" data-i18n-aria="language">
-                        <span id="languageValueLabel">English</span>
-                        <span class="panelChevron" aria-hidden="true">⌄</span>
+                <section id="communicationPanel" class="communicationPanel" aria-label="Panel status" data-i18n-aria="panelStatus">
+                    <button type="button" class="communicationIndicator" data-communication-indicator="judges-ready" disabled><span class="communicationDot" aria-hidden="true"></span><span data-i18n="judgesReady">Judges</span></button>
+                    <button type="button" class="communicationIndicator" data-communication-indicator="tech-panel-ready" disabled><span class="communicationDot" aria-hidden="true"></span><span data-i18n="techPanelReady">Tech</span></button>
+                    <button type="button" class="communicationIndicator" data-communication-indicator="competitor-scored" disabled><span class="communicationDot" aria-hidden="true"></span><span data-i18n="competitorScored">Scored</span></button>
+                    <span id="communicationFeedback" class="communicationFeedback" role="status" aria-live="polite"></span>
+                </section>
+
+                <div class="viewerUtilities">
+                    <button id="refreshButton" class="refreshButton" type="button" aria-label="Refresh" data-i18n-aria="refresh">
+                        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                            <path d="M20 11a8 8 0 1 0-2.2 6.2M20 4v7h-7" />
+                        </svg>
+                        <span data-i18n="refresh">Refresh</span>
                     </button>
-                    <div id="languageMenu" class="languageMenu hidden" role="listbox" aria-label="Language" data-i18n-aria="language">
-                        <button type="button" role="option" data-language="en">English</button>
-                        <button type="button" role="option" data-language="fr">Français</button>
+                    <div class="languageControl">
+                        <span class="languageLabel" data-i18n="language">Language</span>
+                        <input id="language" name="language" type="hidden" value="en" />
+                        <button id="languageButton" class="languageButton" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Language" data-i18n-aria="language">
+                            <span id="languageValueLabel">English</span>
+                            <span class="panelChevron" aria-hidden="true">⌄</span>
+                        </button>
+                        <div id="languageMenu" class="languageMenu hidden" role="listbox" aria-label="Language" data-i18n-aria="language">
+                            <button type="button" role="option" data-language="en">English</button>
+                            <button type="button" role="option" data-language="fr">Français</button>
+                        </div>
                     </div>
                 </div>
         </form>
 
         <section class="viewer" aria-label="Passive remote replay player" data-i18n-aria="remotePlayer">
             <video id="video" playsinline preload="auto" disablepictureinpicture></video>
+            <canvas id="liveTransitionFrame" class="liveTransitionFrame" aria-hidden="true"></canvas>
             <div id="playbackStatus" class="playbackStatus" data-i18n="waitingForRinkId">Waiting for a Rink ID.</div>
             <div id="emptyState" class="emptyState enterRinkId">
                 <div class="testPattern">
-                    <span class="testPatternLabel" data-i18n="noSignal">NO SIGNAL</span>
+                    <span id="testPatternLabel" class="testPatternLabel" data-i18n="noSignal">NO SIGNAL</span>
                 </div>
                 <div class="snow" aria-hidden="true"></div>
                 <span id="emptyStateMessage" class="emptyStateMessage" data-i18n="enterRinkId">Welcome to ReVue-Remote
@@ -100,6 +123,11 @@ Enter Rink ID</span>
                 </button>
                 <button id="judgingPlayPause" class="judgingPlayPause" type="button" data-i18n="play" data-i18n-aria="playVideo">Play</button>
             </div>
+            <div id="communicationAlertStack" class="communicationAlerts">
+                <div id="communicationAlertJudges" class="communicationAlert judges-ready hidden" role="alert" aria-live="assertive" aria-atomic="true"><span class="communicationAlertCheck" aria-hidden="true"><span class="communicationAlertReadyIcon">✓</span><span class="communicationAlertNotReadyIcon hidden">×</span></span><span class="communicationAlertCopy"><strong class="communicationAlertReadyMessage" data-i18n="judgesReadyAlert">Judges Ready</strong><strong class="communicationAlertNotReadyMessage hidden" data-i18n="judgesNotReadyAlert">Judges Not Ready</strong></span></div>
+                <div id="communicationAlertTech" class="communicationAlert tech-panel-ready hidden" role="alert" aria-live="assertive" aria-atomic="true"><span class="communicationAlertCheck" aria-hidden="true"><span class="communicationAlertReadyIcon">✓</span><span class="communicationAlertNotReadyIcon hidden">×</span></span><span class="communicationAlertCopy"><strong class="communicationAlertReadyMessage" data-i18n="techPanelReadyAlert">Tech Panel Ready</strong><strong class="communicationAlertNotReadyMessage hidden" data-i18n="techPanelNotReadyAlert">Tech Panel Not Ready</strong></span></div>
+                <div id="communicationAlertScored" class="communicationAlert competitor-scored hidden" role="alert" aria-live="assertive" aria-atomic="true"><span class="communicationAlertCheck" aria-hidden="true">✓</span><span class="communicationAlertCopy"><strong data-i18n="competitorScoredAlert">Competitor Scored</strong></span></div>
+            </div>
         </section>
 
         <section id="timelineSection" class="timelineSection" aria-label="Video timeline" data-i18n-aria="videoTimeline" hidden>
@@ -117,13 +145,19 @@ Enter Rink ID</span>
                         <circle cx="12" cy="19" r="1.2" />
                     </svg>
                     <span id="networkLatency" data-i18n="checking">CHECKING…</span>
+                    <span class="networkTransferSeparator" aria-hidden="true">·</span>
+                    <span id="networkTransfer" aria-live="off" aria-label="Data transfer unavailable">— Mbps</span>
+                    <span class="networkTransferSeparator" aria-hidden="true">·</span>
+                    <span id="networkCache" aria-live="off" aria-label="Local video cache unavailable">— MB</span>
                 </div>
+                <span id="vroConnectionStatus" class="vroConnectionStatus disconnected" role="status" aria-live="polite">VRO Offline</span>
                 <div id="videoFileName" class="videoFileName"></div>
             </div>
         </section>
     </main>
     </div>
 
-    <script src="app.js?v=20260930-welcome-with-rink-id"></script>
+    <script src="hls.min.js?v=1.6.13"></script>
+    <script src="app.js?v=20261004-status-alert-phrasing"></script>
 </body>
 </html>

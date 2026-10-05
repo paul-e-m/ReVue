@@ -65,7 +65,49 @@ public sealed partial class RemotePlaybackManager : IDisposable
         => SessionCodeRegex().IsMatch(NormalizeSessionCode(value));
 
     public static bool IsRemoteMode(AppConfig cfg)
-        => string.Equals(cfg.VideoSourceMode, "Remote", StringComparison.OrdinalIgnoreCase);
+        => IsRemoteRecordedMode(cfg) || IsRemoteLiveMode(cfg);
+
+    public static bool IsRemoteRecordedMode(AppConfig cfg)
+        => string.Equals(cfg.VideoSourceMode, "RemoteRecorded", StringComparison.OrdinalIgnoreCase);
+
+    public static bool IsRemoteLiveMode(AppConfig cfg)
+        => string.Equals(cfg.VideoSourceMode, "RemoteLive", StringComparison.OrdinalIgnoreCase);
+
+    public static Uri BuildLiveEventUri(AppConfig cfg, string fileName = "index.m3u8")
+    {
+        ValidateConnection(cfg.RemoteHostUrl, cfg.RemoteSessionCode);
+        if (!Guid.TryParseExact(cfg.RemoteLiveEventId, "N", out _))
+            throw new InvalidOperationException("No Remote Live recording is active.");
+        return BuildUri(cfg.RemoteHostUrl,
+            $"api/sessions/{Uri.EscapeDataString(NormalizeSessionCode(cfg.RemoteSessionCode))}/live/events/{cfg.RemoteLiveEventId}/{fileName}");
+    }
+
+    public static Uri BuildLivePreviewUri(AppConfig cfg, string fileName = "index.m3u8")
+    {
+        ValidateConnection(cfg.RemoteHostUrl, cfg.RemoteSessionCode);
+        return BuildUri(cfg.RemoteHostUrl,
+            $"api/sessions/{Uri.EscapeDataString(NormalizeSessionCode(cfg.RemoteSessionCode))}/live/preview/{fileName}");
+    }
+
+    public async Task WaitForLiveEventAsync(AppConfig cfg, CancellationToken cancellationToken)
+    {
+        var url = BuildLiveEventUri(cfg);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(15));
+        while (true)
+        {
+            timeout.Token.ThrowIfCancellationRequested();
+            try
+            {
+                using var response = await _httpClient.GetAsync(url, timeout.Token);
+                if (response.IsSuccessStatusCode &&
+                    (await response.Content.ReadAsStringAsync(timeout.Token)).Contains(".m4s", StringComparison.Ordinal))
+                    return;
+            }
+            catch (HttpRequestException) { }
+            await Task.Delay(200, timeout.Token);
+        }
+    }
 
     public static Uri BuildVideoUri(AppConfig cfg)
     {
@@ -110,6 +152,20 @@ public sealed partial class RemotePlaybackManager : IDisposable
             $"api/sessions/{Uri.EscapeDataString(NormalizeSessionCode(sessionCode))}/validate"), cancellationToken);
         if (!response.IsSuccessStatusCode)
             throw new InvalidOperationException("The Rink ID is not valid on this cloud service.");
+    }
+
+    public async Task ValidateLiveSessionAsync(string hostUrl, string sessionCode, CancellationToken cancellationToken)
+    {
+        ValidateConnection(hostUrl, sessionCode);
+        using var response = await _httpClient.GetAsync(BuildUri(hostUrl,
+            $"api/sessions/{Uri.EscapeDataString(NormalizeSessionCode(sessionCode))}/validate"), cancellationToken);
+        if (!response.IsSuccessStatusCode)
+            throw new InvalidOperationException("The Rink ID is not valid on this ReVue-Remote server.");
+        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(cancellationToken),
+            cancellationToken: cancellationToken);
+        if (!document.RootElement.TryGetProperty("mode", out var mode) ||
+            !string.Equals(mode.GetString(), "Live", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("This Rink ID is set to Recorded. Change it to Live in /config first.");
     }
 
     public async Task DownloadVideoAsync(string hostUrl, string sessionCode, RemoteVideoDescriptor video,
@@ -287,6 +343,7 @@ public sealed partial class RemotePlaybackManager : IDisposable
     public Task PublishRecordingStartedAsync(
         AppConfig cfg,
         double sourceStartSeconds,
+        int? liveDelaySeconds = null,
         CancellationToken cancellationToken = default)
     {
         SetRecordingSourceStart(sourceStartSeconds);
@@ -298,9 +355,27 @@ public sealed partial class RemotePlaybackManager : IDisposable
             TimelineDurationSeconds = 175,
             IsPlaying = true,
             PlaybackRate = 1,
+            LiveDelaySeconds = liveDelaySeconds,
             Mode = "recording"
         }, cancellationToken);
     }
+
+    public Task PublishRecordingPreparingAsync(
+        AppConfig cfg,
+        double sourceStartSeconds,
+        int? liveDelaySeconds = null,
+        CancellationToken cancellationToken = default)
+        => QueuePublish(cfg, new RemotePlaybackCommand
+        {
+            VideoId = cfg.RemoteVideoId,
+            PositionSeconds = Math.Max(0, sourceStartSeconds),
+            TimelinePositionSeconds = 0,
+            TimelineDurationSeconds = 175,
+            IsPlaying = false,
+            PlaybackRate = 1,
+            LiveDelaySeconds = liveDelaySeconds,
+            Mode = "preparing"
+        }, cancellationToken);
 
     public Task PublishRecordingStoppedAsync(
         AppConfig cfg,
@@ -314,6 +389,7 @@ public sealed partial class RemotePlaybackManager : IDisposable
             PositionSeconds = Math.Max(0, sourceStart + Math.Max(0, durationSeconds)),
             TimelinePositionSeconds = Math.Max(0, durationSeconds),
             TimelineDurationSeconds = Math.Max(0, durationSeconds),
+            FramesPerSecond = cfg.SourceFps is > 0 and <= 240 ? cfg.SourceFps : 60,
             IsPlaying = false,
             PlaybackRate = 1,
             Mode = "replay"
@@ -332,6 +408,7 @@ public sealed partial class RemotePlaybackManager : IDisposable
             PositionSeconds = Math.Max(0, sourceStart + Math.Max(0, local.PositionSeconds)),
             TimelinePositionSeconds = Math.Max(0, local.TimelinePositionSeconds),
             TimelineDurationSeconds = Math.Max(0, local.TimelineDurationSeconds),
+            FramesPerSecond = cfg.SourceFps is > 0 and <= 240 ? cfg.SourceFps : 60,
             IsPlaying = local.IsPlaying && !local.IsReverse,
             PlaybackRate = Math.Clamp(local.PlaybackRate, 0.05, 4),
             PlaybackDiscontinuity = Math.Max(0, local.PlaybackDiscontinuity),
@@ -382,6 +459,25 @@ public sealed partial class RemotePlaybackManager : IDisposable
         SignalPublisher();
     }
 
+    public async Task PublishNoSignalImmediatelyAsync(AppConfig cfg, CancellationToken cancellationToken = default)
+    {
+        if (!IsRemoteMode(cfg) || !IsValidSessionCode(cfg.RemoteSessionCode)) return;
+        ValidateConnection(cfg.RemoteHostUrl, cfg.RemoteSessionCode);
+        await SendIntentAsync(new RemotePlaybackIntent
+        {
+            HostUrl = cfg.RemoteHostUrl,
+            SessionCode = NormalizeSessionCode(cfg.RemoteSessionCode),
+            Command = new RemotePlaybackCommand
+            {
+                SourceType = IsRemoteLiveMode(cfg) ? "Live" : "Recorded",
+                VideoId = "",
+                PlaybackRate = 1,
+                Mode = "ready"
+            },
+            QueuedAtUtc = DateTimeOffset.UtcNow
+        }, cancellationToken);
+    }
+
     private Task QueuePublish(
         AppConfig cfg,
         RemotePlaybackCommand command,
@@ -389,6 +485,13 @@ public sealed partial class RemotePlaybackManager : IDisposable
     {
         if (!IsRemoteMode(cfg)) return Task.CompletedTask;
         ValidateConnection(cfg.RemoteHostUrl, cfg.RemoteSessionCode);
+        if (IsRemoteLiveMode(cfg))
+        {
+            command.SourceType = "Live";
+            command.VideoId = string.Equals(command.Mode, "ready", StringComparison.OrdinalIgnoreCase)
+                ? "" : cfg.RemoteLiveEventId;
+            command.FramesPerSecond = 60000d / 1001d;
+        }
 
         lock (_publisherLock)
         {
@@ -549,10 +652,13 @@ public sealed partial class RemotePlaybackManager : IDisposable
 
     private static RemotePlaybackCommand CloneCommand(RemotePlaybackCommand source) => new()
     {
+        SourceType = source.SourceType,
         VideoId = source.VideoId,
         PositionSeconds = source.PositionSeconds,
         TimelinePositionSeconds = source.TimelinePositionSeconds,
         TimelineDurationSeconds = source.TimelineDurationSeconds,
+        FramesPerSecond = source.FramesPerSecond,
+        LiveDelaySeconds = source.LiveDelaySeconds,
         IsPlaying = source.IsPlaying,
         PlaybackRate = source.PlaybackRate,
         PlaybackDiscontinuity = source.PlaybackDiscontinuity,

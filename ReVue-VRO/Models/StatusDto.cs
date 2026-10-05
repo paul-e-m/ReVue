@@ -12,6 +12,7 @@ public class StatusDto
     public double? RecordingDurationSeconds { get; set; }
     public double? ProgramTimerStartOffsetSeconds { get; set; }
     public string ReplayMediaToken { get; set; } = "";
+    public string RemoteLiveEventId { get; set; } = "";
 
     public List<ClipSegment> Clips { get; set; } = new();
     public double? OpenClipStartSeconds { get; set; }

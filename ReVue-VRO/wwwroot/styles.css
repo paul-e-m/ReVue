@@ -762,6 +762,20 @@ body.replayActive .clipBtn.isSelectedReplay.isReview .clipBtnCode {
             display: block;
         }
 
+.livePreviewStatus {
+    position: absolute;
+    inset: calc(var(--sessionInfoH) + var(--recordActionBarH)) 0 0;
+    z-index: 4;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    background: #111923;
+    font-size: clamp(16px, 1.6vw, 24px);
+    font-weight: 600;
+    pointer-events: none;
+}
+
 .recordActionBar {
     position: absolute;
     top: var(--sessionInfoH);
@@ -1870,6 +1884,13 @@ body.replayActive .clipBtn.isSelectedReplay.isReview .clipBtnCode {
 
 .mainBtn.btnImg:disabled {
     opacity: 1 !important;
+}
+
+#recordMode .recordActionColMain .mainBtn.btnImg.remoteRecordUnavailable:disabled {
+    opacity: 0.45 !important;
+    filter: grayscale(1) brightness(0.75) !important;
+    box-shadow: none !important;
+    cursor: not-allowed !important;
 }
 
 .remoteVideoModalCard {

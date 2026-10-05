@@ -68,6 +68,8 @@ public static class AppServer
         builder.Services.AddSingleton<RemotePlaybackManager>();
         builder.Services.AddSingleton<RemoteUploadProgressStore>();
         builder.Services.AddSingleton<RemoteDownloadStore>();
+        builder.Services.AddHttpClient("remote-live-event");
+        builder.Services.AddHttpClient("remote-live-preview");
 
         var app = builder.Build();
         var cssHelperManager = app.Services.GetRequiredService<CssHelperManager>();
@@ -127,7 +129,7 @@ public static class AppServer
         static (string ErrorCode, string Detail) DescribeRecordingStartFailure(string sourceMode, string? diagnostic)
         {
             var demoMode = string.Equals(sourceMode, "Demo", StringComparison.OrdinalIgnoreCase);
-            var remoteMode = string.Equals(sourceMode, "Remote", StringComparison.OrdinalIgnoreCase);
+            var remoteMode = string.Equals(sourceMode, "RemoteRecorded", StringComparison.OrdinalIgnoreCase);
             var text = diagnostic?.Trim() ?? string.Empty;
             var comparable = text.ToLowerInvariant();
 
@@ -255,6 +257,10 @@ public static class AppServer
                 (string.Equals(path, "/api/demoVideo", StringComparison.OrdinalIgnoreCase) ||
                  string.Equals(path, "/api/remote/local-video", StringComparison.OrdinalIgnoreCase) ||
                  string.Equals(path, "/api/recording/file", StringComparison.OrdinalIgnoreCase) ||
+                 (IsHeadOrGet(http.Request) &&
+                  path.StartsWith("/api/remote-live-event/", StringComparison.OrdinalIgnoreCase)) ||
+                 (IsHeadOrGet(http.Request) &&
+                  path.StartsWith("/api/remote-live-preview/", StringComparison.OrdinalIgnoreCase)) ||
                  !path.StartsWith("/api", StringComparison.OrdinalIgnoreCase)))
             {
                 await next();
@@ -290,13 +296,17 @@ public static class AppServer
             {
                 "RTSP" => "RTSP",
                 "DEMO" => "Demo",
-                "REMOTE" => "Remote",
+                // "Remote" was used by earlier releases for recorded cloud video.
+                "REMOTE" => "RemoteRecorded",
+                "REMOTERECORDED" => "RemoteRecorded",
+                "REMOTELIVE" => "RemoteLive",
                 _ => cfg.DemoMode ? "Demo" : "RTSP"
             };
             cfg.DemoMode = string.Equals(cfg.VideoSourceMode, "Demo", StringComparison.OrdinalIgnoreCase);
             cfg.RemoteHostUrl = (cfg.RemoteHostUrl ?? "").Trim().TrimEnd('/');
             cfg.RemoteSessionCode = RemotePlaybackManager.NormalizeSessionCode(cfg.RemoteSessionCode);
             cfg.RemoteVideoId = (cfg.RemoteVideoId ?? "").Trim();
+            cfg.RemoteLiveEventId = (cfg.RemoteLiveEventId ?? "").Trim();
             cfg.RemoteVideoFolder = (cfg.RemoteVideoFolder ?? "").Trim();
             cfg.RemoteVideoLocalPath = (cfg.RemoteVideoLocalPath ?? "").Trim();
             cfg.RemoteVideoMappings = (cfg.RemoteVideoMappings ?? [])
@@ -834,6 +844,78 @@ public static class AppServer
             }
         });
 
+        // Use the same rolling preview as the browser viewers. Proxying through
+        // the local app keeps the HLS playlist and segments on one origin.
+        app.MapGet("/api/remote-live-preview/{fileName}", async (
+            string fileName, IHttpClientFactory clients, HttpContext http) =>
+        {
+            if (fileName.Length is < 1 or > 160 || fileName is "." or ".." ||
+                fileName.Any(ch => !(char.IsAsciiLetterOrDigit(ch) || ch is '.' or '_' or '-')))
+                return Results.NotFound();
+            var cfg = LoadConfig();
+            if (!RemotePlaybackManager.IsRemoteLiveMode(cfg)) return Results.NotFound();
+            Uri url;
+            try
+            {
+                var baseUri = RemotePlaybackManager.BuildLivePreviewUri(cfg, fileName);
+                var query = http.Request.QueryString.Value;
+                url = string.IsNullOrEmpty(query) ? baseUri :
+                    new UriBuilder(baseUri) { Query = query.TrimStart('?') }.Uri;
+            }
+            catch (InvalidOperationException) { return Results.NotFound(); }
+            try
+            {
+                using var response = await clients.CreateClient("remote-live-preview").GetAsync(
+                    url, HttpCompletionOption.ResponseHeadersRead, http.RequestAborted);
+                if (!response.IsSuccessStatusCode) return Results.StatusCode((int)response.StatusCode);
+                var playlist = fileName.EndsWith(".m3u8", StringComparison.OrdinalIgnoreCase);
+                http.Response.Headers.CacheControl = "no-store";
+                if (playlist)
+                {
+                    var body = await response.Content.ReadAsStringAsync(http.RequestAborted);
+                    var remotePrefix = $"/api/sessions/{RemotePlaybackManager.NormalizeSessionCode(cfg.RemoteSessionCode)}/live/preview/";
+                    body = body.Replace(remotePrefix, "/api/remote-live-preview/", StringComparison.Ordinal);
+                    return Results.Content(body, "application/vnd.apple.mpegurl");
+                }
+                http.Response.ContentType = "video/mp4";
+                await using var stream = await response.Content.ReadAsStreamAsync(http.RequestAborted);
+                await stream.CopyToAsync(http.Response.Body, http.RequestAborted);
+                return Results.Empty;
+            }
+            catch (HttpRequestException) { return Results.StatusCode(StatusCodes.Status503ServiceUnavailable); }
+        });
+
+        // Serve the canonical live event to the local VRO iframe without
+        // cross-origin HLS requests. Only the current event's media files can
+        // be fetched through this route.
+        app.MapGet("/api/remote-live-event/{eventId}/{fileName}", async (
+            string eventId, string fileName, IHttpClientFactory clients, HttpContext http) =>
+        {
+            if (fileName != "index.m3u8" && fileName != "init.mp4" &&
+                !(fileName.Length > 8 && fileName.StartsWith("seg_", StringComparison.Ordinal) &&
+                  fileName.EndsWith(".m4s", StringComparison.Ordinal) &&
+                  fileName.AsSpan(4, fileName.Length - 8).IndexOfAnyExceptInRange('0', '9') < 0))
+                return Results.NotFound();
+            var cfg = LoadConfig();
+            if (!RemotePlaybackManager.IsRemoteLiveMode(cfg) ||
+                !Guid.TryParseExact(eventId, "N", out _) ||
+                !string.Equals(eventId, cfg.RemoteLiveEventId, StringComparison.Ordinal))
+                return Results.NotFound();
+            Uri url;
+            try { url = RemotePlaybackManager.BuildLiveEventUri(cfg, fileName); }
+            catch (InvalidOperationException) { return Results.NotFound(); }
+            try
+            {
+                using var response = await clients.CreateClient("remote-live-event").GetAsync(
+                    url, http.RequestAborted);
+                if (!response.IsSuccessStatusCode) return Results.StatusCode((int)response.StatusCode);
+                http.Response.Headers.CacheControl = fileName == "index.m3u8" ? "no-store" : "public, max-age=86400";
+                return Results.Bytes(await response.Content.ReadAsByteArrayAsync(http.RequestAborted),
+                    fileName.EndsWith(".m3u8", StringComparison.Ordinal) ? "application/vnd.apple.mpegurl" : "video/mp4");
+            }
+            catch (HttpRequestException) { return Results.StatusCode(StatusCodes.Status503ServiceUnavailable); }
+        });
+
         app.MapGet("/api/liveUrl", async (
             MediaMtxManager mtx,
             RecorderManager recorder,
@@ -857,7 +939,7 @@ public static class AppServer
                 });
             }
 
-            if (RemotePlaybackManager.IsRemoteMode(cfg))
+            if (RemotePlaybackManager.IsRemoteRecordedMode(cfg))
             {
                 try
                 {
@@ -885,6 +967,12 @@ public static class AppServer
                 }
                 catch (Exception ex)
                 {
+                    if (string.IsNullOrWhiteSpace(cfg.RemoteVideoId) &&
+                        RemotePlaybackManager.IsValidSessionCode(cfg.RemoteSessionCode))
+                    {
+                        try { await remote.PublishIdleAsync(cfg, http.RequestAborted); }
+                        catch { }
+                    }
                     return Results.Ok(new
                     {
                         url = $"/remote-live.html?error={Uri.EscapeDataString(ex.Message)}&ts={DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}",
@@ -893,9 +981,27 @@ public static class AppServer
                 }
             }
 
-            mtx.EnsureRunning(cfg);
+            if (RemotePlaybackManager.IsRemoteLiveMode(cfg))
+            {
+                if (!RemotePlaybackManager.IsValidSessionCode(cfg.RemoteSessionCode))
+                    return Results.Ok(new { url = "/remote-live.html?error=Enter%20a%20Rink%20ID", mode = "remote" });
+                if (!session.IsRecording && string.Equals(session.Mode, "record", StringComparison.OrdinalIgnoreCase))
+                {
+                    try { await remote.PublishIdleAsync(cfg, http.RequestAborted); }
+                    catch { }
+                }
+            }
+
             recorder.Warmup(cfg);
 
+            if (RemotePlaybackManager.IsRemoteLiveMode(cfg))
+                return Results.Ok(new
+                {
+                    url = $"/remote-live-hls.html?ts={DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}",
+                    mode = "rtsp"
+                });
+
+            mtx.EnsureRunning(cfg);
             var url = $"/rtsp-live?ts={DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
             return Results.Ok(new
             {
@@ -956,13 +1062,14 @@ public static class AppServer
             }
         });
 
-        app.MapPost("/api/appconfig", (AppConfig cfg, MediaMtxManager mtx, RemotePlaybackManager remote) =>
+        app.MapPost("/api/appconfig", async (AppConfig cfg, MediaMtxManager mtx, RemotePlaybackManager remote, HttpContext http) =>
         {
             var previous = LoadConfig();
             // The Rink ID is edited on the main screen through its own endpoint.
             // Other settings saves must not restore a stale rink or video selection.
             cfg.RemoteSessionCode = previous.RemoteSessionCode;
             cfg.RemoteVideoId = previous.RemoteVideoId;
+            cfg.RemoteLiveEventId = previous.RemoteLiveEventId;
             cfg.RemoteVideoLocalPath = previous.RemoteVideoLocalPath;
             cfg.RemoteVideoSelectedAtUtc = previous.RemoteVideoSelectedAtUtc;
             cfg = NormalizeConfig(MergeConfig(previous, cfg));
@@ -972,9 +1079,13 @@ public static class AppServer
             var remoteEndpointChanged =
                 remoteHostChanged ||
                 !string.Equals(RemotePlaybackManager.NormalizeSessionCode(previous.RemoteSessionCode), cfg.RemoteSessionCode, StringComparison.Ordinal);
-            if (remoteEndpointChanged)
+            var remoteModeChanged = !string.Equals(previous.VideoSourceMode, cfg.VideoSourceMode,
+                StringComparison.OrdinalIgnoreCase) &&
+                (RemotePlaybackManager.IsRemoteMode(previous) || RemotePlaybackManager.IsRemoteMode(cfg));
+            if (remoteEndpointChanged || remoteModeChanged)
             {
                 cfg.RemoteVideoId = "";
+                cfg.RemoteLiveEventId = "";
                 cfg.RemoteVideoLocalPath = "";
                 cfg.RemoteVideoSelectedAtUtc = null;
             }
@@ -990,15 +1101,22 @@ public static class AppServer
             {
             }
 
-            if (string.Equals(cfg.VideoSourceMode, "RTSP", StringComparison.OrdinalIgnoreCase))
+            if (RemotePlaybackManager.IsRemoteLiveMode(cfg))
+                mtx.Stop();
+            else if (string.Equals(cfg.VideoSourceMode, "RTSP", StringComparison.OrdinalIgnoreCase))
                 mtx.Restart(cfg);
             if (!RemotePlaybackManager.IsRemoteMode(cfg) || remoteEndpointChanged)
+            {
                 remote.StopPublishing();
+                try { await remote.PublishNoSignalImmediatelyAsync(previous, http.RequestAborted); }
+                catch { }
+            }
 
             return Results.Json(cfg, jsonOpts);
         });
 
-        app.MapPost("/api/remote/rink-id", (RemoteRinkIdRequest request, RemotePlaybackManager remote, SessionManager session) =>
+        app.MapPost("/api/remote/rink-id", async (RemoteRinkIdRequest request, RemotePlaybackManager remote,
+            MediaMtxManager mtx, SessionManager session, HttpContext http) =>
         {
             var cfg = LoadConfig();
             if (!RemotePlaybackManager.IsRemoteMode(cfg))
@@ -1009,16 +1127,25 @@ public static class AppServer
             var code = RemotePlaybackManager.NormalizeSessionCode(request.SessionCode);
             if (code.Length > 0 && !RemotePlaybackManager.IsValidSessionCode(code))
                 return Results.Problem(detail: "Rink ID must contain exactly six letters or digits.", statusCode: 400);
+            if (code.Length > 0 && RemotePlaybackManager.IsRemoteLiveMode(cfg))
+            {
+                try { await remote.ValidateLiveSessionAsync(cfg.RemoteHostUrl, code, http.RequestAborted); }
+                catch (Exception ex) { return Results.Problem(detail: ex.Message, statusCode: 400); }
+            }
             if (string.Equals(cfg.RemoteSessionCode, code, StringComparison.Ordinal))
                 return Results.Json(cfg, jsonOpts);
 
             // The video library reports an unknown ID when the operator opens it.
+            remote.StopPublishing();
+            try { await remote.PublishNoSignalImmediatelyAsync(cfg, http.RequestAborted); }
+            catch { }
             cfg.RemoteSessionCode = code;
             cfg.RemoteVideoId = "";
+            cfg.RemoteLiveEventId = "";
             cfg.RemoteVideoLocalPath = "";
             cfg.RemoteVideoSelectedAtUtc = null;
             SaveConfig(cfg);
-            remote.StopPublishing();
+            if (RemotePlaybackManager.IsRemoteLiveMode(cfg)) mtx.Stop();
             return Results.Json(cfg, jsonOpts);
         });
 
@@ -1085,7 +1212,7 @@ public static class AppServer
         });
         app.MapDelete("/api/remote/downloads/{jobId}", (string jobId, RemoteDownloadStore downloads) =>
             downloads.Cancel(jobId) ? Results.Ok() : Results.NotFound());
-        app.MapPost("/api/remote/library/{videoId}/select", (string videoId) =>
+        app.MapPost("/api/remote/library/{videoId}/select", async (string videoId, RemotePlaybackManager remote, HttpContext http) =>
         {
             var cfg = LoadConfig();
             var path = AppPaths.GetRemoteVideoCachePath(cfg.RemoteSessionCode, videoId);
@@ -1094,6 +1221,7 @@ public static class AppServer
             cfg.RemoteVideoLocalPath = path;
             cfg.RemoteVideoSelectedAtUtc = DateTimeOffset.UtcNow;
             SaveConfig(cfg);
+            await remote.PublishIdleAsync(cfg, http.RequestAborted);
             return Results.Json(cfg, jsonOpts);
         });
 
@@ -1124,7 +1252,7 @@ public static class AppServer
             }, jsonOpts);
         });
 
-        app.MapPost("/api/remote/local-videos/select", (SelectLocalRemoteVideoRequest request) =>
+        app.MapPost("/api/remote/local-videos/select", async (SelectLocalRemoteVideoRequest request, RemotePlaybackManager remote, HttpContext http) =>
         {
             var cfg = LoadConfig();
             var selected = ListLocalRemoteVideos(cfg)
@@ -1138,6 +1266,7 @@ public static class AppServer
             cfg.RemoteVideoId = selected.RemoteVideoId;
             cfg.RemoteVideoSelectedAtUtc = DateTimeOffset.UtcNow;
             SaveConfig(cfg);
+            await remote.PublishIdleAsync(cfg, http.RequestAborted);
             return Results.Json(cfg, jsonOpts);
         });
 
@@ -1601,7 +1730,28 @@ public static class AppServer
             var sourceMode = cfg.VideoSourceMode;
             var isDemoMode = string.Equals(sourceMode, "Demo", StringComparison.OrdinalIgnoreCase);
             var isRemoteMode = RemotePlaybackManager.IsRemoteMode(cfg);
+            var isRemoteRecordedMode = RemotePlaybackManager.IsRemoteRecordedMode(cfg);
             var sourceStartSeconds = Math.Max(0, req?.sourceStartSeconds ?? req?.demoStartSeconds ?? 0);
+            var requestedLiveDelay = req?.liveDelaySeconds;
+            var liveDelaySeconds = RemotePlaybackManager.IsRemoteLiveMode(cfg)
+                ? Math.Clamp((int)Math.Ceiling(requestedLiveDelay.HasValue && double.IsFinite(requestedLiveDelay.Value)
+                    ? requestedLiveDelay.Value : 6), 4, 7)
+                : (int?)null;
+            if (RemotePlaybackManager.IsRemoteLiveMode(cfg))
+            {
+                if (!RemotePlaybackManager.IsValidSessionCode(cfg.RemoteSessionCode))
+                    return RecordingStartProblem("RINK_ID_REQUIRED", "Remote Live recording could not start",
+                        "Enter a valid Rink ID first.", StatusCodes.Status422UnprocessableEntity);
+                try { await remote.ValidateLiveSessionAsync(cfg.RemoteHostUrl, cfg.RemoteSessionCode, http.RequestAborted); }
+                catch (Exception ex)
+                {
+                    return RecordingStartProblem("LIVE_RINK_NOT_READY", "Remote Live recording could not start",
+                        ex.Message, StatusCodes.Status422UnprocessableEntity);
+                }
+                cfg.RemoteLiveEventId = Guid.NewGuid().ToString("N");
+                sourceStartSeconds = 0;
+                SaveConfig(cfg);
+            }
 
             if (isDemoMode)
             {
@@ -1616,7 +1766,7 @@ public static class AppServer
                 }
             }
 
-            if (isRemoteMode)
+            if (isRemoteRecordedMode)
             {
                 var selectedAt = cfg.RemoteVideoSelectedAtUtc;
                 var recordEnabledAt = selectedAt?.AddSeconds(RemoteVideoRecordDelaySeconds);
@@ -1650,12 +1800,44 @@ public static class AppServer
                 if (string.Equals(sourceMode, "RTSP", StringComparison.OrdinalIgnoreCase))
                     mtx.EnsureRunning(cfg);
 
+                if (isRemoteMode)
+                {
+                    try
+                    {
+                        // Queue the correct source position while FFmpeg is
+                        // arming so remote viewers can fill a short buffer.
+                        await remote.PublishRecordingPreparingAsync(cfg, sourceStartSeconds,
+                            liveDelaySeconds, http.RequestAborted);
+                        if (RemotePlaybackManager.IsRemoteLiveMode(cfg))
+                            await remote.WaitForLiveEventAsync(cfg, http.RequestAborted);
+                    }
+                    catch
+                    {
+                        if (RemotePlaybackManager.IsRemoteLiveMode(cfg))
+                        {
+                            try { await remote.PublishIdleAsync(cfg, http.RequestAborted); }
+                            catch { }
+                            return RecordingStartProblem("LIVE_EVENT_NOT_READY",
+                                "Remote Live recording could not start",
+                                "The live event did not become available. Check the stream and Remote connection.",
+                                StatusCodes.Status503ServiceUnavailable);
+                        }
+                        // Recorded-video startup must not depend on the remote link.
+                    }
+                }
+
                 var started = await recorder.StartRecordingAsync(
                     cfg,
-                    (isDemoMode || isRemoteMode) ? sourceStartSeconds : null);
+                    (isDemoMode || isRemoteRecordedMode) ? sourceStartSeconds : null,
+                    liveDelaySeconds);
 
                 if (!started)
                 {
+                    if (isRemoteMode)
+                    {
+                        try { await remote.PublishIdleAsync(cfg, http.RequestAborted); }
+                        catch { }
+                    }
                     var failure = DescribeRecordingStartFailure(sourceMode, recorder.LastStartError);
                     return RecordingStartProblem(
                         failure.ErrorCode,
@@ -1673,7 +1855,8 @@ public static class AppServer
                 {
                     try
                     {
-                        await remote.PublishRecordingStartedAsync(cfg, sourceStartSeconds, http.RequestAborted);
+                        await remote.PublishRecordingStartedAsync(cfg, sourceStartSeconds,
+                            liveDelaySeconds, http.RequestAborted);
                     }
                     catch
                     {
@@ -1745,7 +1928,9 @@ public static class AppServer
             }
 
             var session = app.Services.GetRequiredService<SessionManager>();
-            return Results.Ok(session.GetStatus(cfg.SourceFps));
+            var status = session.GetStatus(cfg.SourceFps);
+            if (RemotePlaybackManager.IsRemoteLiveMode(cfg)) status.RemoteLiveEventId = cfg.RemoteLiveEventId;
+            return Results.Ok(status);
         });
 
         app.MapPost("/api/record/stop", async (
@@ -1825,6 +2010,18 @@ public static class AppServer
 
             if (RemotePlaybackManager.IsRemoteMode(cfg))
             {
+                if (RemotePlaybackManager.IsRemoteRecordedMode(cfg))
+                {
+                    cfg.RemoteVideoId = "";
+                    cfg.RemoteVideoLocalPath = "";
+                    cfg.RemoteVideoSelectedAtUtc = null;
+                    SaveConfig(cfg);
+                }
+                else if (RemotePlaybackManager.IsRemoteLiveMode(cfg))
+                {
+                    cfg.RemoteLiveEventId = "";
+                    SaveConfig(cfg);
+                }
                 try
                 {
                     await remote.PublishIdleAsync(cfg, http.RequestAborted);
@@ -1843,7 +2040,7 @@ public static class AppServer
             if (!session.IsReplayMediaAvailable())
             {
                 http.Response.StatusCode = StatusCodes.Status404NotFound;
-                await http.Response.WriteAsync("No replay clips currently available.");
+                await http.Response.WriteAsync("No completed recording currently available.");
                 return;
             }
 
@@ -2050,5 +2247,6 @@ public static class AppServer
     }
 }
 
-public record StartRecordingRequest(double? demoStartSeconds, double? sourceStartSeconds);
+public record StartRecordingRequest(double? demoStartSeconds, double? sourceStartSeconds,
+    double? liveDelaySeconds);
 public record StopRecordingRequest(double? uiElapsedSeconds, double? programTimerStartOffsetSeconds);

@@ -104,6 +104,7 @@
 
         form {
             display: grid;
+            grid-template-columns: minmax(0, 1fr);
             gap: 6px;
         }
 
@@ -135,6 +136,139 @@
             grid-template-columns: minmax(210px, 300px) minmax(180px, 1fr);
             gap: 0 8px;
             align-items: center;
+        }
+
+        .videoInputCard {
+            min-width: 0;
+            padding-bottom: 12px;
+        }
+
+        .videoInputChooser {
+            display: flex;
+            gap: 12px;
+            padding: 14px 4px 12px;
+        }
+
+        .videoInputChoice {
+            width: 104px;
+            height: 104px;
+            min-height: 104px;
+            padding: 12px 8px 10px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            border: 1px solid #d7dbe5;
+            border-radius: 16px;
+            background: #fff;
+            color: #4c4c53;
+            box-shadow: 0 1px 2px rgba(20, 24, 40, 0.04), 0 5px 14px rgba(20, 24, 40, 0.04);
+            transition: border-color 140ms ease, background-color 140ms ease, color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
+        }
+
+            .videoInputChoice:hover {
+                transform: translateY(-1px);
+                border-color: #b7bdcc;
+                box-shadow: 0 2px 4px rgba(20, 24, 40, 0.05), 0 8px 18px rgba(20, 24, 40, 0.07);
+            }
+
+            .videoInputChoice:focus-visible {
+                outline: 0;
+                box-shadow: 0 0 0 3px rgba(67, 82, 184, 0.18), 0 8px 18px rgba(20, 24, 40, 0.07);
+            }
+
+            .videoInputChoice.isSelected {
+                color: var(--brand);
+                border-color: rgba(67, 82, 184, 0.72);
+                background: linear-gradient(180deg, #fff 0%, #f1f2ff 100%);
+                box-shadow: 0 0 0 1px rgba(67, 82, 184, 0.12), 0 8px 18px rgba(67, 82, 184, 0.10);
+            }
+
+        .videoInputIcon {
+            width: 34px;
+            height: 34px;
+            stroke: currentColor;
+            stroke-width: 1.7;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            fill: none;
+        }
+
+        .videoInputChoiceLabel {
+            font-size: 13px;
+            font-weight: 700;
+            line-height: 1.2;
+        }
+
+        .remoteTypeRow {
+            padding: 2px 4px 12px;
+        }
+
+            .remoteTypeRow.hiddenRow {
+                display: none;
+            }
+
+        .remoteTypeSwitch {
+            display: inline-flex;
+            padding: 3px;
+            border-radius: 9px;
+            background: #eceef3;
+        }
+
+        .remoteTypeChoice {
+            min-width: 0;
+            min-height: 29px;
+            padding: 0 14px;
+            border-radius: 7px;
+            background: transparent;
+            color: #5f616a;
+            font-size: 12px;
+            font-weight: 600;
+            line-height: 1.2;
+            box-shadow: none;
+            transition: background-color 140ms ease, color 140ms ease, box-shadow 140ms ease;
+        }
+
+            .remoteTypeChoice.isSelected {
+                background: #fff;
+                color: var(--text);
+                box-shadow: 0 1px 3px rgba(23, 28, 44, 0.16);
+            }
+
+            .remoteTypeChoice:focus-visible {
+                outline: 0;
+                box-shadow: 0 0 0 2px rgba(67, 82, 184, 0.22);
+            }
+
+        .demoVideoNote {
+            grid-column: 1 / -1;
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            margin: 2px 0 6px;
+            padding: 11px 12px;
+            border-radius: 9px;
+            background: #f5f6f8;
+            color: #5c5d64;
+            font-size: 11px;
+            line-height: 1.45;
+        }
+
+            .demoVideoNote.hiddenRow {
+                display: none;
+            }
+
+        .demoVideoNoteIcon {
+            width: 17px;
+            height: 17px;
+            flex: 0 0 auto;
+            margin-top: 1px;
+            stroke: #777a85;
+            stroke-width: 1.7;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            fill: none;
         }
 
         .row {
@@ -556,6 +690,27 @@
                 font-size: 16px;
             }
 
+            .videoInputChooser {
+                gap: 8px;
+            }
+
+            .videoInputChoice {
+                width: min(104px, calc((100vw - 54px) / 3));
+                height: min(104px, calc((100vw - 54px) / 3));
+                min-height: 88px;
+                border-radius: 14px;
+            }
+
+            .remoteTypeSwitch {
+                display: flex;
+                width: 100%;
+            }
+
+            .remoteTypeChoice {
+                flex: 1 1 50%;
+                padding-inline: 8px;
+            }
+
             .modalMessage {
                 font-size: 12px;
                 line-height: 1.35;
@@ -576,6 +731,12 @@
             .fieldSelect {
                 max-width: 100%;
                 min-width: 0;
+            }
+
+            input[type="text"].fieldWidthMedium,
+            input[type="number"].fieldWidthMedium,
+            .fieldSelect.fieldWidthMedium {
+                width: 100%;
             }
         }
     </style>
@@ -689,23 +850,53 @@
                     </div>
                 </div>
 
-                <div class="card">
-                    <h2 class="sectionTitle" data-i18n="videoSource">Video Source</h2>
+                <div class="card videoInputCard">
+                    <h2 id="VideoInputTitle" class="sectionTitle" data-i18n="videoInput">Video Input</h2>
+
+                    <div class="videoInputChooser" role="group" aria-labelledby="VideoInputTitle">
+                        <button type="button" class="videoInputChoice" data-video-input="live" aria-pressed="false">
+                            <svg class="videoInputIcon" viewBox="0 0 36 36" aria-hidden="true">
+                                <rect x="5" y="9" width="20" height="18" rx="3"></rect>
+                                <path d="m25 15 6-3v12l-6-3z"></path>
+                                <path d="M10 5.5h10"></path>
+                            </svg>
+                            <span class="videoInputChoiceLabel" data-i18n="videoInputLive">Live</span>
+                        </button>
+
+                        <button type="button" class="videoInputChoice" data-video-input="remote" aria-pressed="false">
+                            <svg class="videoInputIcon" viewBox="0 0 36 36" aria-hidden="true">
+                                <path d="M10 26.5h16a5 5 0 0 0 .6-10A8.5 8.5 0 0 0 10.4 14 6.3 6.3 0 0 0 10 26.5Z"></path>
+                                <path d="M14 20h8"></path>
+                                <path d="m19 17 3 3-3 3"></path>
+                            </svg>
+                            <span class="videoInputChoiceLabel" data-i18n="videoInputRemote">Remote</span>
+                        </button>
+
+                        <button type="button" class="videoInputChoice" data-video-input="demo" aria-pressed="false">
+                            <svg class="videoInputIcon" viewBox="0 0 36 36" aria-hidden="true">
+                                <rect x="5" y="7" width="26" height="22" rx="4"></rect>
+                                <path d="m15 13 8 5-8 5z"></path>
+                            </svg>
+                            <span class="videoInputChoiceLabel" data-i18n="videoInputDemo">Demo Mode</span>
+                        </button>
+                    </div>
+
+                    <select id="VideoSourceMode" name="VideoSourceMode" hidden aria-hidden="true" tabindex="-1">
+                        <option value="RTSP">Live</option>
+                        <option value="Demo">Demo Mode</option>
+                        <option value="RemoteRecorded">Previously recorded performances</option>
+                        <option value="RemoteLive">Live stream</option>
+                    </select>
+                    <input id="DemoMode" name="DemoMode" type="checkbox" hidden />
+
+                    <div id="RemoteTypeRow" class="remoteTypeRow hiddenRow">
+                        <div class="remoteTypeSwitch" role="group" aria-label="Remote video type">
+                            <button type="button" class="remoteTypeChoice" data-remote-mode="RemoteLive" aria-pressed="false" data-i18n="remoteLiveStream">Live stream</button>
+                            <button type="button" class="remoteTypeChoice" data-remote-mode="RemoteRecorded" aria-pressed="false" data-i18n="remoteRecordedPerformances">Previously recorded performances</button>
+                        </div>
+                    </div>
 
                     <div class="grid">
-                        <div class="row" id="VideoSourceModeRow">
-                            <div class="labelBlock">
-                                <label for="VideoSourceMode" data-i18n="videoSourceMode">Source Mode</label>
-                                <div class="help" data-i18n="videoSourceModeHelp">Choose the live RTSP feed, local demo MP4, or a hosted Remote MP4.</div>
-                            </div>
-
-                            <select id="VideoSourceMode" name="VideoSourceMode" class="fieldSelect fieldWidthSmall">
-                                <option value="RTSP" data-i18n="videoSourceRtsp">Regular (RTSP)</option>
-                                <option value="Demo" data-i18n="videoSourceDemo">Demo (local MP4)</option>
-                                <option value="Remote" data-i18n="videoSourceRemote">Remote (hosted MP4)</option>
-                            </select>
-                            <input id="DemoMode" name="DemoMode" type="checkbox" hidden />
-                        </div>
 
                         <div class="row" id="RtspUrlRow">
                             <div id="RtspUrlLabelBlock" class="labelBlock">
@@ -749,7 +940,16 @@
                             <input id="RemoteVideoCacheExpirationHours" name="RemoteVideoCacheExpirationHours" class="fieldWidthSmall" type="number" min="1" max="8760" step="1" />
                         </div>
 
-                        <div class="row">
+                        <div id="DemoVideoNote" class="demoVideoNote hiddenRow">
+                            <svg class="demoVideoNoteIcon" viewBox="0 0 20 20" aria-hidden="true">
+                                <path d="M10 14v-4"></path>
+                                <path d="M10 6.5h.01"></path>
+                                <circle cx="10" cy="10" r="8"></circle>
+                            </svg>
+                            <span data-i18n="demoVideoReplaceHelp">Optional: replace demovideo.mp4 in %LOCALAPPDATA%\ReVue\media\ with a constant-frame-rate H.264/AVC MP4.</span>
+                        </div>
+
+                        <div class="row" id="SourceFpsRow">
                             <div class="labelBlock">
                                 <label for="SourceFps" data-i18n="fps">FPS</label>
                                 <div class="help" data-i18n="fpsHelp">Video source frame rate (typically 30 or 60).</div>
@@ -874,7 +1074,7 @@
         </div>
     </div>
 
-    <script src="config-i18n.js"></script>
+    <script src="config-i18n.js?v=20261005-video-input"></script>
     <script>
         const CSS_API_BASE_URL = "https://sc-css-public-api-cmh9d3htgxfpdkb7.canadacentral-01.azurewebsites.net";
 
@@ -928,6 +1128,10 @@
 
         const videoSourceModeInput = document.getElementById("VideoSourceMode");
         const demoModeInput = document.getElementById("DemoMode");
+        const videoInputChoices = [...document.querySelectorAll("[data-video-input]")];
+        const remoteTypeChoices = [...document.querySelectorAll("[data-remote-mode]")];
+        const remoteTypeRow = document.getElementById("RemoteTypeRow");
+        const demoVideoNote = document.getElementById("DemoVideoNote");
         const rtspUrlInput = document.getElementById("RtspUrl");
         const rtspUrlLabelBlock = document.getElementById("RtspUrlLabelBlock");
         const rtspUrlRow = document.getElementById("RtspUrlRow");
@@ -977,6 +1181,7 @@
         let hostPingIntervalId = null;
         let dbPingInFlight = false;
         let cssServerPingInFlight = false;
+        let lastRemoteSourceMode = "RemoteLive";
         let rtspPingInFlight = false;
         let eventIdConfirmedValue = "";
         let eventIdConfirmPromise = null;
@@ -1155,7 +1360,8 @@
 
         function normalizeVideoSourceMode(value, demoModeFallback = false) {
             const normalized = String(value ?? "").trim().toLowerCase();
-            if (normalized === "remote") return "Remote";
+            if (normalized === "remotelive") return "RemoteLive";
+            if (normalized === "remoterecorded" || normalized === "remote") return "RemoteRecorded";
             if (normalized === "demo") return "Demo";
             if (normalized === "rtsp") return "RTSP";
             return demoModeFallback ? "Demo" : "RTSP";
@@ -1481,9 +1687,30 @@
         function updateVideoSourceState() {
             const sourceMode = normalizeVideoSourceMode(videoSourceModeInput.value, demoModeInput.checked);
             const demoModeOn = sourceMode === "Demo";
-            const remoteModeOn = sourceMode === "Remote";
+            const remoteModeOn = sourceMode === "RemoteRecorded" || sourceMode === "RemoteLive";
+            const recordedModeOn = sourceMode === "RemoteRecorded";
             const rtspModeOn = sourceMode === "RTSP";
             demoModeInput.checked = demoModeOn;
+
+            if (remoteModeOn) {
+                lastRemoteSourceMode = sourceMode;
+            }
+
+            const selectedInput = remoteModeOn ? "remote" : (rtspModeOn ? "live" : "demo");
+            for (const choice of videoInputChoices) {
+                const selected = choice.dataset.videoInput === selectedInput;
+                choice.classList.toggle("isSelected", selected);
+                choice.setAttribute("aria-pressed", String(selected));
+            }
+
+            for (const choice of remoteTypeChoices) {
+                const selected = choice.dataset.remoteMode === sourceMode;
+                choice.classList.toggle("isSelected", selected);
+                choice.setAttribute("aria-pressed", String(selected));
+            }
+
+            remoteTypeRow.classList.toggle("hiddenRow", !remoteModeOn);
+            demoVideoNote.classList.toggle("hiddenRow", !demoModeOn);
 
             rtspUrlInput.disabled = !rtspModeOn;
             rtspUrlLabelBlock.classList.toggle("disabled", !rtspModeOn);
@@ -1491,16 +1718,16 @@
             rtspTransportProtocolRow.classList.toggle("hiddenRow", !rtspModeOn);
 
             for (const row of [
-                remoteHostUrlRow,
-                remoteVideoCacheMaximumFilesRow,
-                remoteVideoCacheExpirationHoursRow
+                remoteHostUrlRow
             ]) {
                 row?.classList.toggle("hiddenRow", !remoteModeOn);
             }
+            remoteVideoCacheMaximumFilesRow?.classList.toggle("hiddenRow", !recordedModeOn);
+            remoteVideoCacheExpirationHoursRow?.classList.toggle("hiddenRow", !recordedModeOn);
 
             remoteHostUrlInput.disabled = !remoteModeOn;
-            remoteVideoCacheMaximumFilesInput.disabled = !remoteModeOn;
-            remoteVideoCacheExpirationHoursInput.disabled = !remoteModeOn;
+            remoteVideoCacheMaximumFilesInput.disabled = !recordedModeOn;
+            remoteVideoCacheExpirationHoursInput.disabled = !recordedModeOn;
 
             if (!rtspModeOn) {
                 setPingIndicator(rtspPingDot, rtspPingText, "idle", demoModeOn ? "demoModeStatus" : "unavailable");
@@ -1901,7 +2128,7 @@
             event.preventDefault();
             setStatus("savingSettings", "", true);
 
-            if (normalizeVideoSourceMode(videoSourceModeInput.value, false) === "Remote") {
+            if (["RemoteRecorded", "RemoteLive"].includes(normalizeVideoSourceMode(videoSourceModeInput.value, false))) {
                 validateRemoteHostUrl();
             }
 
@@ -1980,6 +2207,26 @@
             updateVideoSourceState();
             pollRtspHostPing();
         });
+
+        for (const choice of videoInputChoices) {
+            choice.addEventListener("click", () => {
+                const selectedInput = choice.dataset.videoInput;
+                videoSourceModeInput.value = selectedInput === "remote"
+                    ? lastRemoteSourceMode
+                    : (selectedInput === "live" ? "RTSP" : "Demo");
+                updateVideoSourceState();
+                pollRtspHostPing();
+            });
+        }
+
+        for (const choice of remoteTypeChoices) {
+            choice.addEventListener("click", () => {
+                lastRemoteSourceMode = normalizeVideoSourceMode(choice.dataset.remoteMode, false);
+                videoSourceModeInput.value = lastRemoteSourceMode;
+                updateVideoSourceState();
+                pollRtspHostPing();
+            });
+        }
 
         cssLinkInput.addEventListener("change", () => {
             updateCssIntegrationState();

@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
+using Microsoft.AspNetCore.DataProtection;
 
 namespace ReVueRemote;
 
@@ -10,10 +11,13 @@ public sealed partial class CloudAccountStore
     private readonly string _systemRoot;
     private readonly string _usersPath;
     private readonly string _keysPath;
+    private readonly IDataProtector _publishPasswordProtector;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly JsonSerializerOptions _json = new(JsonSerializerDefaults.Web) { WriteIndented = true };
 
-    public CloudAccountStore(IConfiguration configuration, IWebHostEnvironment environment)
+    public CloudAccountStore(
+        IConfiguration configuration, IWebHostEnvironment environment,
+        IDataProtectionProvider dataProtectionProvider)
     {
         var configuredRoot = configuration["ReVueRemote:StorageRoot"]?.Trim();
         var storageRoot = string.IsNullOrWhiteSpace(configuredRoot)
@@ -22,6 +26,8 @@ public sealed partial class CloudAccountStore
         _systemRoot = Path.Combine(storageRoot, "_system");
         _usersPath = Path.Combine(_systemRoot, "users.json");
         _keysPath = Path.Combine(_systemRoot, "keys.json");
+        _publishPasswordProtector = dataProtectionProvider.CreateProtector(
+            "ReVueRemote.LivePublishPassword.v1");
     }
 
     [GeneratedRegex("^[A-Z0-9]{6}$", RegexOptions.CultureInvariant)]
@@ -238,7 +244,10 @@ public sealed partial class CloudAccountStore
                     Code = key.Code,
                     CreatedByUserId = key.CreatedByUserId,
                     CreatedByEmail = usersById.GetValueOrDefault(key.CreatedByUserId) ?? "Unknown user",
-                    CreatedAtUtc = key.CreatedAtUtc
+                    CreatedAtUtc = key.CreatedAtUtc,
+                    Mode = SessionKeyModes.Normalize(key.Mode),
+                    HasPublishPassword = !string.IsNullOrEmpty(key.PublishPasswordHash),
+                    LiveFeedActive = key.LiveFeedActive
                 })
                 .ToList();
         }
@@ -271,19 +280,205 @@ public sealed partial class CloudAccountStore
         finally { _gate.Release(); }
     }
 
-    public async Task<SessionKeyRecord> CreateKeyAsync(string code, string userId, CancellationToken cancellationToken)
+    public async Task<string?> GetKeyModeAsync(string code, CancellationToken cancellationToken = default)
     {
         code = NormalizeKey(code);
+        if (!IsValidKeyFormat(code)) return null;
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            var key = (await ReadKeysAsync(cancellationToken)).FirstOrDefault(item => item.Code == code);
+            return key is null ? null : SessionKeyModes.Normalize(key.Mode);
+        }
+        finally { _gate.Release(); }
+    }
+
+    public async Task<bool> AuthorizeLivePublisherAsync(string code, string? password, CancellationToken cancellationToken = default)
+    {
+        code = NormalizeKey(code);
+        if (!IsValidKeyFormat(code)) return false;
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            var keys = await ReadKeysAsync(cancellationToken);
+            var key = keys.FirstOrDefault(item => item.Code == code);
+            if (key is null || SessionKeyModes.Normalize(key.Mode) != SessionKeyModes.Live ||
+                !key.LiveFeedActive) return false;
+            var authorized = string.IsNullOrEmpty(key.PublishPasswordHash)
+                ? string.IsNullOrEmpty(password)
+                : VerifyPassword(password ?? "", key.PublishPasswordHash);
+            // Migrate pre-reveal passwords the next time their publisher
+            // successfully authenticates, when the plaintext is available.
+            if (authorized && !string.IsNullOrEmpty(key.PublishPasswordHash) &&
+                !string.IsNullOrEmpty(password) &&
+                TryUnprotectPublishPassword(key.PublishPasswordProtected) is null)
+            {
+                key.PublishPasswordProtected = _publishPasswordProtector.Protect(password);
+                await WriteAsync(_keysPath, keys, cancellationToken);
+            }
+            return authorized;
+        }
+        finally { _gate.Release(); }
+    }
+
+    public async Task<ManagedKeyMediaSettings> GetKeyMediaAsync(
+        string code, string userId, bool isAdmin, CancellationToken cancellationToken)
+    {
+        code = NormalizeKey(code);
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            var key = (await ReadKeysAsync(cancellationToken)).FirstOrDefault(item => item.Code == code)
+                ?? throw new KeyNotFoundException("Rink ID not found.");
+            if (!isAdmin && key.CreatedByUserId != userId)
+                throw new UnauthorizedAccessException("You do not have permission to edit this Rink ID.");
+            if (SessionKeyModes.Normalize(key.Mode) != SessionKeyModes.Live)
+                throw new InvalidOperationException("Recorded video Rink IDs do not have stream settings.");
+            var hasPassword = !string.IsNullOrEmpty(key.PublishPasswordHash);
+            var password = TryUnprotectPublishPassword(key.PublishPasswordProtected);
+            return new ManagedKeyMediaSettings
+            {
+                HasPublishPassword = hasPassword,
+                PublishPassword = password,
+                PasswordCanBeRevealed = !hasPassword || password is not null
+            };
+        }
+        finally { _gate.Release(); }
+    }
+
+    public async Task<ManagedSessionKeyRecord> UpdateKeyMediaAsync(
+        string code, string? publishPassword, string userId, bool isAdmin,
+        CancellationToken cancellationToken)
+    {
+        code = NormalizeKey(code);
+        if (publishPassword is { Length: > 256 })
+            throw new InvalidOperationException("The publish password cannot exceed 256 characters.");
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            var keys = await ReadKeysAsync(cancellationToken);
+            var key = keys.FirstOrDefault(item => item.Code == code)
+                ?? throw new KeyNotFoundException("Rink ID not found.");
+            if (!isAdmin && key.CreatedByUserId != userId)
+                throw new UnauthorizedAccessException("You do not have permission to edit this Rink ID.");
+            if (SessionKeyModes.Normalize(key.Mode) != SessionKeyModes.Live)
+                throw new InvalidOperationException("Recorded video Rink IDs do not have stream settings. Rink ID type cannot be changed after creation.");
+            if (publishPassword is not null)
+            {
+                key.PublishPasswordHash = publishPassword.Length == 0 ? "" : HashPassword(publishPassword);
+                key.PublishPasswordProtected = publishPassword.Length == 0
+                    ? "" : _publishPasswordProtector.Protect(publishPassword);
+            }
+            await WriteAsync(_keysPath, keys, cancellationToken);
+            return new ManagedSessionKeyRecord
+            {
+                Code = key.Code,
+                CreatedByUserId = key.CreatedByUserId,
+                CreatedAtUtc = key.CreatedAtUtc,
+                Mode = SessionKeyModes.Live,
+                HasPublishPassword = !string.IsNullOrEmpty(key.PublishPasswordHash),
+                LiveFeedActive = key.LiveFeedActive
+            };
+        }
+        finally { _gate.Release(); }
+    }
+
+    public async Task<ManagedSessionKeyRecord> SetLiveFeedActiveAsync(
+        string code, bool active, string userId, bool isAdmin,
+        CancellationToken cancellationToken)
+    {
+        code = NormalizeKey(code);
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            var keys = await ReadKeysAsync(cancellationToken);
+            var key = keys.FirstOrDefault(item => item.Code == code)
+                ?? throw new KeyNotFoundException("Rink ID not found.");
+            if (!isAdmin && key.CreatedByUserId != userId)
+                throw new UnauthorizedAccessException("You do not have permission to edit this Rink ID.");
+            if (SessionKeyModes.Normalize(key.Mode) != SessionKeyModes.Live)
+                throw new InvalidOperationException("Only Live Rink IDs have a live feed status.");
+            key.LiveFeedActive = active;
+            await WriteAsync(_keysPath, keys, cancellationToken);
+            return new ManagedSessionKeyRecord
+            {
+                Code = key.Code,
+                CreatedByUserId = key.CreatedByUserId,
+                CreatedAtUtc = key.CreatedAtUtc,
+                Mode = SessionKeyModes.Live,
+                HasPublishPassword = !string.IsNullOrEmpty(key.PublishPasswordHash),
+                LiveFeedActive = key.LiveFeedActive
+            };
+        }
+        finally { _gate.Release(); }
+    }
+
+    public async Task<SessionKeyRecord> CreateKeyAsync(
+        string code, string mode, string? publishPassword, string userId, CancellationToken cancellationToken)
+    {
+        code = NormalizeKey(code);
+        mode = SessionKeyModes.Require(mode);
         if (!IsValidKeyFormat(code)) throw new InvalidOperationException("The Rink ID must contain exactly six letters or digits.");
+        if (publishPassword is { Length: > 256 })
+            throw new InvalidOperationException("The publish password cannot exceed 256 characters.");
+        if (mode == SessionKeyModes.Live && string.IsNullOrEmpty(publishPassword))
+            throw new InvalidOperationException("Enter an RTMP publish password for this Live Rink ID.");
+        if (mode == SessionKeyModes.Recorded && !string.IsNullOrEmpty(publishPassword))
+            throw new InvalidOperationException("Publish passwords are only available for Live Rink IDs.");
         await _gate.WaitAsync(cancellationToken);
         try
         {
             var keys = await ReadKeysAsync(cancellationToken);
             if (keys.Any(key => key.Code == code)) throw new InvalidOperationException("That Rink ID already exists.");
-            var record = new SessionKeyRecord { Code = code, CreatedByUserId = userId, CreatedAtUtc = DateTimeOffset.UtcNow };
+            var record = new SessionKeyRecord
+            {
+                Code = code,
+                CreatedByUserId = userId,
+                CreatedAtUtc = DateTimeOffset.UtcNow,
+                Mode = mode,
+                PublishPasswordHash = mode == SessionKeyModes.Live && !string.IsNullOrEmpty(publishPassword)
+                    ? HashPassword(publishPassword) : "",
+                PublishPasswordProtected = mode == SessionKeyModes.Live && !string.IsNullOrEmpty(publishPassword)
+                    ? _publishPasswordProtector.Protect(publishPassword) : ""
+            };
             keys.Add(record);
             await WriteAsync(_keysPath, keys, cancellationToken);
             return record;
+        }
+        finally { _gate.Release(); }
+    }
+
+    public async Task<SessionKeyRecord> RenameKeyAsync(
+        string code,
+        string newCode,
+        string userId,
+        bool isAdmin,
+        RemoteSessionStore sessions,
+        CancellationToken cancellationToken)
+    {
+        code = NormalizeKey(code);
+        newCode = NormalizeKey(newCode);
+        if (!IsValidKeyFormat(newCode))
+            throw new InvalidOperationException("The Rink ID must contain exactly six letters or digits.");
+
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            var keys = await ReadKeysAsync(cancellationToken);
+            var key = keys.FirstOrDefault(item => item.Code == code)
+                ?? throw new KeyNotFoundException("Rink ID not found.");
+            if (!isAdmin && key.CreatedByUserId != userId)
+                throw new UnauthorizedAccessException("You do not have permission to rename this Rink ID.");
+            if (code == newCode) return key;
+            if (keys.Any(item => item.Code == newCode))
+                throw new InvalidOperationException("That Rink ID already exists.");
+
+            await sessions.RenameSessionAsync(code, newCode, async () =>
+            {
+                key.Code = newCode;
+                await WriteAsync(_keysPath, keys, cancellationToken);
+            }, cancellationToken);
+            return key;
         }
         finally { _gate.Release(); }
     }
@@ -369,6 +564,13 @@ public sealed partial class CloudAccountStore
         }
         catch { return false; }
     }
+
+    private string? TryUnprotectPublishPassword(string? protectedPassword)
+    {
+        if (string.IsNullOrEmpty(protectedPassword)) return null;
+        try { return _publishPasswordProtector.Unprotect(protectedPassword); }
+        catch (CryptographicException) { return null; }
+    }
 }
 
 public static class CloudRoles
@@ -397,14 +599,63 @@ public sealed class CloudUser
     public CloudUser CopyPublic() => new() { Id = Id, Email = Email, FirstName = FirstName, LastName = LastName, Role = Role, MustChangePassword = MustChangePassword, FailedLoginAttempts = FailedLoginAttempts, RetryAfterUtc = RetryAfterUtc, IsLocked = IsLocked, CreatedAtUtc = CreatedAtUtc, LastLoginUtc = LastLoginUtc, AuthVersion = AuthVersion };
 }
 
-public sealed class SessionKeyRecord { public string Code { get; set; } = ""; public string CreatedByUserId { get; set; } = ""; public DateTimeOffset CreatedAtUtc { get; set; } }
-public sealed class ManagedSessionKeyRecord { public string Code { get; set; } = ""; public string CreatedByUserId { get; set; } = ""; public string CreatedByEmail { get; set; } = ""; public DateTimeOffset CreatedAtUtc { get; set; } }
+public static class SessionKeyModes
+{
+    public const string Recorded = "Recorded";
+    public const string Live = "Live";
+    public static string Normalize(string? value)
+        => string.Equals(value, Live, StringComparison.OrdinalIgnoreCase) ? Live : Recorded;
+    public static string Require(string? value)
+        => string.Equals(value, Live, StringComparison.OrdinalIgnoreCase) ? Live
+            : string.Equals(value, Recorded, StringComparison.OrdinalIgnoreCase) ? Recorded
+            : throw new InvalidOperationException("Choose Recorded or Live for this Rink ID.");
+}
+
+public sealed class SessionKeyRecord
+{
+    public string Code { get; set; } = "";
+    public string CreatedByUserId { get; set; } = "";
+    public DateTimeOffset CreatedAtUtc { get; set; }
+    public string Mode { get; set; } = SessionKeyModes.Recorded;
+    public string PublishPasswordHash { get; set; } = "";
+    public string PublishPasswordProtected { get; set; } = "";
+    // Existing Rink IDs predate this switch and remain enabled when loaded.
+    public bool LiveFeedActive { get; set; } = true;
+}
+public sealed class ManagedSessionKeyRecord
+{
+    public string Code { get; set; } = "";
+    public string CreatedByUserId { get; set; } = "";
+    public string CreatedByEmail { get; set; } = "";
+    public DateTimeOffset CreatedAtUtc { get; set; }
+    public string Mode { get; set; } = SessionKeyModes.Recorded;
+    public bool HasPublishPassword { get; set; }
+    public bool LiveFeedActive { get; set; } = true;
+}
+public sealed class UpdateKeyMediaRequest
+{
+    public string? Mode { get; set; }
+    public string? PublishPassword { get; set; }
+}
+public sealed class ManagedKeyMediaSettings
+{
+    public bool HasPublishPassword { get; set; }
+    public string? PublishPassword { get; set; }
+    public bool PasswordCanBeRevealed { get; set; }
+}
+public sealed class UpdateLiveFeedStateRequest { public bool? Active { get; set; } }
 public sealed class LoginRequest { public string Email { get; set; } = ""; public string Password { get; set; } = ""; }
 public sealed class CreateUserRequest { public string Email { get; set; } = ""; public string FirstName { get; set; } = ""; public string LastName { get; set; } = ""; public string Role { get; set; } = CloudRoles.Regular; public string Password { get; set; } = ""; }
 public sealed class UpdateProfileRequest { public string Email { get; set; } = ""; public string FirstName { get; set; } = ""; public string LastName { get; set; } = ""; }
 public sealed class ChangePasswordRequest { public string CurrentPassword { get; set; } = ""; public string NewPassword { get; set; } = ""; }
 public sealed class AdminUpdateUserRequest { public string Role { get; set; } = CloudRoles.Regular; public string NewPassword { get; set; } = ""; public bool Unlock { get; set; } }
-public sealed class CreateKeyRequest { public string Code { get; set; } = ""; }
+public sealed class CreateKeyRequest
+{
+    public string Code { get; set; } = "";
+    public string Mode { get; set; } = "";
+    public string? PublishPassword { get; set; }
+}
+public sealed class RenameKeyRequest { public string Code { get; set; } = ""; }
 public sealed record LoginResult(bool Succeeded, bool Locked, int RetryAfterSeconds, CloudUser? User)
 {
     public static LoginResult Success(CloudUser user) => new(true, false, 0, user);

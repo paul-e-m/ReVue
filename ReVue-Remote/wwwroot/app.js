@@ -4,6 +4,7 @@
     const panelTypeButton = document.getElementById("panelTypeButton");
     const panelTypeLabel = document.getElementById("panelTypeLabel");
     const panelTypeMenu = document.getElementById("panelTypeMenu");
+    const refreshButton = document.getElementById("refreshButton");
     const languageSelect = document.getElementById("language");
     const languageButton = document.getElementById("languageButton");
     const languageValueLabel = document.getElementById("languageValueLabel");
@@ -12,10 +13,16 @@
     const muteInput = document.getElementById("mute");
     const controls = document.getElementById("controls");
     const video = document.getElementById("video");
+    const videoViewer = video.closest(".viewer");
+    const liveTransitionFrame = document.getElementById("liveTransitionFrame");
     const emptyStateMessage = document.getElementById("emptyStateMessage");
+    const testPatternLabel = document.getElementById("testPatternLabel") || document.querySelector(".testPatternLabel");
     const playbackStatus = document.getElementById("playbackStatus");
     const networkIndicator = document.getElementById("networkIndicator");
     const networkLatency = document.getElementById("networkLatency");
+    const networkTransfer = document.getElementById("networkTransfer");
+    const networkCache = document.getElementById("networkCache");
+    const vroConnectionStatus = document.getElementById("vroConnectionStatus");
     const emptyState = document.getElementById("emptyState");
     const audioTestButton = document.getElementById("audioTestButton");
     const audioTestLabel = document.getElementById("audioTestLabel");
@@ -34,60 +41,89 @@
     const replayProgramTimeIndicator = document.getElementById("replayProgramTimeIndicator");
     const reviewIndicator = document.getElementById("reviewIndicator");
     const reviewIndicatorText = document.getElementById("reviewIndicatorText");
+    const communicationPanel = document.getElementById("communicationPanel");
+    const communicationFeedback = document.getElementById("communicationFeedback");
+    const communicationAlertStack = document.getElementById("communicationAlertStack");
+    const communicationAlerts = {
+        "judges-ready": document.getElementById("communicationAlertJudges"),
+        "tech-panel-ready": document.getElementById("communicationAlertTech"),
+        "competitor-scored": document.getElementById("communicationAlertScored")
+    };
 
     const translations = {
         en: {
             language: "Language", waitingForRinkId: "Waiting for a Rink ID.", volume: "Volume", mute: "Mute",
-            videoVolume: "Video volume", rinkId: "Rink ID", rinkIdInput: "Six-character Rink ID", role: "Role",
-            viewerRole: "Viewer role", technicalPanel: "Technical", judge: "Judge", referee: "Referee",
-            remotePlayer: "Passive remote replay player", enterRinkId: "Welcome to ReVue-Remote\nEnter Rink ID", waitingForVideo: "Stand by for video...", noSignal: "NO SIGNAL", playTestTone: "Sound check", stopTestTone: "Sound off", testToneUnavailable: "Audio test unavailable", testToneVolume: "Volume: {percent}%", audioMuted: "Audio is muted", operatorOffline: "ReVue VRO connection lost.", play: "Play", pause: "Pause",
+            videoVolume: "Video volume", rinkId: "Rink ID", rinkIdInput: "Six-character Rink ID", role: "Role", refresh: "Refresh",
+            viewerRole: "Viewer role", announcer: "Announcer", dataInputOperator: "Data Input Operator", dataSpecialist: "Data Specialist", judge: "Judge", referee: "Referee", technicalSpecialist1: "Technical Specialist 1", technicalSpecialist2: "Technical Specialist 2", technicalController: "Technical Controller", videoReplayOperator: "Video Replay Operator",
+            remotePlayer: "Passive remote replay player", enterRinkId: "Welcome to ReVue-Remote\nEnter Rink ID", waitingForVideo: "Stand by for video...", noSignal: "NO SIGNAL", standBy: "STAND BY", playTestTone: "Sound check", stopTestTone: "Sound off", testToneUnavailable: "Audio test unavailable", testToneVolume: "Volume: {percent}%", audioMuted: "Audio is muted", operatorOffline: "ReVue VRO connection lost.", play: "Play", pause: "Pause",
             playVideo: "Play video", pauseVideo: "Pause video", setStopwatchZero: "Set stopwatch zero",
             clearStopwatch: "Clear stopwatch", videoTimeline: "Video timeline", videoPlaybackPosition: "Video playback position",
             checking: "CHECKING…", disconnected: "DISCONNECTED", checkingServer: "Checking server connectivity", serverDisconnected: "Server disconnected",
-            serverLatency: "Server latency {message}", live: "LIVE", review: "Review:", normalSpeed: "normal speed",
+            serverLatency: "Server latency {message}", dataTransfer: "Data transfer {rate}", dataTransferUnavailable: "Data transfer unavailable", localVideoCache: "Local video cache {size}", localVideoCacheUnavailable: "Local video cache unavailable", vroOnline: "VRO Online", vroOffline: "VRO Offline", live: "LIVE", review: "Review:", normalSpeed: "normal speed",
             speed: "{speed}x speed", playbackPaused: "Playback paused{zoom}", playingAt: "Playing at {speed}{zoom}",
             zoom: " · Zoom {percent}%", autoplayMuted: "{message} · Muted by browser; uncheck Mute for sound",
             secondsCount: "{count} second{suffix}", blockedEmpty: "This IP address has been blocked for 24 hours.",
             invalidRinkEmpty: "This Rink ID is not valid.", finalAttempt: "Final attempt: another invalid Rink ID will block this IP address for 24 hours.",
             enterRink: "Enter a six-character Rink ID.", ipBlocked: "This IP address is blocked. Access resumes in {time}.",
             finalAttemptAvailable: "Final attempt available in {time}. Another invalid Rink ID will block this IP address for 24 hours.",
-            invalidRinkDelay: "Invalid Rink ID. Try again in {time}.", connectedWaitingVideo: "Connected to {code}. Waiting for a video.",
-            preparingVideo: "{code} · Preparing video…", reverseUnavailable: "Reverse playback is not shown on the passive player.",
-            waitForward: "Connected to {code}. Waiting for forward playback.", adjustVolume: "Connected to {code}. Adjust Volume to enable playback with sound.",
-            connectingEmpty: "Connecting to ReVue VRO…", connecting: "Connecting to {code}…", rinkNotCreated: "Rink ID {code} has not been created.",
+            invalidRinkDelay: "Invalid Rink ID. Try again in {time}.", connectedWaitingVideo: "Connected. Waiting for a video.",
+            preparingVideo: "Waiting for video…", cacheUnavailable: "Video cache unavailable or full. Use a secure connection, free browser storage, and reload.", reverseUnavailable: "Reverse playback is not shown on the passive player.",
+            waitForward: "Waiting for forward playback.", adjustVolume: "Adjust Volume to enable playback with sound.",
+            connectingEmpty: "Connecting to ReVue VRO…", connecting: "Connecting…", rinkNotCreated: "This Rink ID has not been created.",
             serverNotReached: "The ReVue-Remote server could not be reached.", playbackUnreadable: "The playback update could not be read.",
-            connectedWaitingVro: "Connected to {code}. Waiting for ReVue VRO.", connectionInterrupted: "Connection to {code} was interrupted. Reconnecting…",
-            soundEnabled: "Connected to {code}. Sound enabled; waiting for ReVue VRO."
+            connectedWaitingVro: "Connected. Waiting for ReVue VRO.", connectionInterrupted: "Connection interrupted. Reconnecting…",
+            panelStatus: "Panel status", judgesReady: "Judges", techPanelReady: "Tech",
+            competitorScored: "Scored", judgesReadyAlert: "Judges Are Ready", judgesNotReadyAlert: "Judges Are Not Ready",
+            techPanelReadyAlert: "Tech Panel Is Ready", techPanelNotReadyAlert: "Tech Panel Not Ready",
+            competitorScoredAlert: "Competitor Scored", statusOn: "on", statusOff: "off",
+            statusUnavailable: "unavailable", statusUpdateFailed: "Status update failed. Try again."
         },
         fr: {
             language: "Langue", waitingForRinkId: "En attente d’un ID de patinoire.", volume: "Volume", mute: "Muet",
-            videoVolume: "Volume de la vidéo", rinkId: "ID de patinoire", rinkIdInput: "ID de patinoire à six caractères", role: "Rôle",
-            viewerRole: "Rôle du spectateur", technicalPanel: "Technique", judge: "Juge", referee: "Arbitre",
-            remotePlayer: "Lecteur de reprise à distance", enterRinkId: "Bienvenue dans ReVue-Remote\nSaisissez l’ID de patinoire", waitingForVideo: "En attente de la vidéo…", noSignal: "AUCUN SIGNAL", playTestTone: "Test sonore", stopTestTone: "Couper le son", testToneUnavailable: "Test audio indisponible", testToneVolume: "Volume : {percent} %", audioMuted: "Le son est coupé", operatorOffline: "Connexion à ReVue VRO perdue.", play: "Lire", pause: "Pause",
+            videoVolume: "Volume de la vidéo", rinkId: "ID de patinoire", rinkIdInput: "ID de patinoire à six caractères", role: "Rôle", refresh: "Actualiser",
+            viewerRole: "Rôle du spectateur", announcer: "Annonceur", dataInputOperator: "Le RED (DIO)", dataSpecialist: "Spécialiste des données", judge: "Juge", referee: "Arbitre", technicalSpecialist1: "Spécialiste technique 1", technicalSpecialist2: "Spécialiste technique 2", technicalController: "Contrôleur technique", videoReplayOperator: "Opérateur de reprise vidéo",
+            remotePlayer: "Lecteur de reprise à distance", enterRinkId: "Bienvenue dans ReVue-Remote\nSaisissez l’ID de patinoire", waitingForVideo: "En attente de la vidéo…", noSignal: "AUCUN SIGNAL", standBy: "EN ATTENTE", playTestTone: "Test sonore", stopTestTone: "Couper le son", testToneUnavailable: "Test audio indisponible", testToneVolume: "Volume : {percent} %", audioMuted: "Le son est coupé", operatorOffline: "Connexion à ReVue VRO perdue.", play: "Lire", pause: "Pause",
             playVideo: "Lire la vidéo", pauseVideo: "Mettre la vidéo en pause", setStopwatchZero: "Remettre le chronomètre à zéro",
             clearStopwatch: "Effacer le chronomètre", videoTimeline: "Chronologie de la vidéo", videoPlaybackPosition: "Position de lecture de la vidéo",
             checking: "VÉRIFICATION…", disconnected: "DÉCONNECTÉ", checkingServer: "Vérification de la connexion au serveur", serverDisconnected: "Serveur déconnecté",
-            serverLatency: "Latence du serveur : {message}", live: "DIRECT", review: "Révision :", normalSpeed: "vitesse normale",
+            serverLatency: "Latence du serveur : {message}", dataTransfer: "Transfert de données {rate}", dataTransferUnavailable: "Transfert de données indisponible", localVideoCache: "Cache vidéo local {size}", localVideoCacheUnavailable: "Cache vidéo local indisponible", vroOnline: "VRO en ligne", vroOffline: "VRO hors ligne", live: "DIRECT", review: "Révision :", normalSpeed: "vitesse normale",
             speed: "vitesse {speed}x", playbackPaused: "Lecture en pause{zoom}", playingAt: "Lecture à {speed}{zoom}",
             zoom: " · Zoom {percent}%", autoplayMuted: "{message} · Son coupé par le navigateur; décochez Muet pour activer le son",
             secondsCount: "{count} seconde{suffix}", blockedEmpty: "Cette adresse IP a été bloquée pendant 24 heures.",
             invalidRinkEmpty: "Cet ID de patinoire n’est pas valide.", finalAttempt: "Dernière tentative : un autre ID de patinoire invalide bloquera cette adresse IP pendant 24 heures.",
             enterRink: "Saisissez un ID de patinoire à six caractères.", ipBlocked: "Cette adresse IP est bloquée. L’accès reprendra dans {time}.",
             finalAttemptAvailable: "Dernière tentative disponible dans {time}. Un autre ID de patinoire invalide bloquera cette adresse IP pendant 24 heures.",
-            invalidRinkDelay: "ID de patinoire invalide. Réessayez dans {time}.", connectedWaitingVideo: "Connecté à {code}. En attente d’une vidéo.",
-            preparingVideo: "{code} · Préparation de la vidéo…", reverseUnavailable: "La lecture arrière n’est pas affichée dans le lecteur passif.",
-            waitForward: "Connecté à {code}. En attente de la lecture avant.", adjustVolume: "Connecté à {code}. Réglez le volume pour activer la lecture avec le son.",
-            connectingEmpty: "Connexion à ReVue VRO…", connecting: "Connexion à {code}…", rinkNotCreated: "L’ID de patinoire {code} n’a pas été créé.",
+            invalidRinkDelay: "ID de patinoire invalide. Réessayez dans {time}.", connectedWaitingVideo: "Connecté. En attente d’une vidéo.",
+            preparingVideo: "En attente de la vidéo…", cacheUnavailable: "Cache vidéo indisponible ou plein. Utilisez une connexion sécurisée, libérez de l’espace et rechargez la page.", reverseUnavailable: "La lecture arrière n’est pas affichée dans le lecteur passif.",
+            waitForward: "En attente de la lecture avant.", adjustVolume: "Réglez le volume pour activer la lecture avec le son.",
+            connectingEmpty: "Connexion à ReVue VRO…", connecting: "Connexion…", rinkNotCreated: "Cet ID de patinoire n’a pas été créé.",
             serverNotReached: "Le serveur ReVue-Remote est inaccessible.", playbackUnreadable: "La mise à jour de lecture est illisible.",
-            connectedWaitingVro: "Connecté à {code}. En attente de ReVue VRO.", connectionInterrupted: "La connexion à {code} a été interrompue. Reconnexion…",
-            soundEnabled: "Connecté à {code}. Son activé; en attente de ReVue VRO."
+            connectedWaitingVro: "Connecté. En attente de ReVue VRO.", connectionInterrupted: "Connexion interrompue. Reconnexion…",
+            panelStatus: "État du panel", judgesReady: "Juges", techPanelReady: "Tech",
+            competitorScored: "Noté", judgesReadyAlert: "Juges prêts", judgesNotReadyAlert: "Juges non prêts",
+            techPanelReadyAlert: "Panel technique prêt", techPanelNotReadyAlert: "Panel technique non prêt",
+            competitorScoredAlert: "Concurrent noté", statusOn: "activé", statusOff: "désactivé",
+            statusUnavailable: "indisponible", statusUpdateFailed: "Échec de la mise à jour. Réessayez."
         }
     };
 
     let sessionCode = "";
     let eventSource = null;
+    let viewerSessionId = "";
+    let communicationRequestPending = "";
+    const communicationAlertTimers = new Map();
+    const communicationButtonTimers = new Map();
+    const readyIndicatorOrder = [];
+    const panelReadyIndicators = ["judges-ready", "tech-panel-ready"];
+    const communicationIndicators = {
+        "judges-ready": { roles: ["referee", "data-specialist"], property: "judgesReady", label: "judgesReady", alertLabel: "judgesReadyAlert" },
+        "tech-panel-ready": { roles: ["technical-controller", "data-specialist"], property: "techPanelReady", label: "techPanelReady", alertLabel: "techPanelReadyAlert" },
+        "competitor-scored": { roles: ["data-specialist"], property: "competitorScored", label: "competitorScored", alertLabel: "competitorScoredAlert" }
+    };
     let currentVideoId = "";
     let currentVideoSource = "";
+    let assignedVideoSource = "";
+    let cacheSizeInFlight = false;
     let latestState = null;
     let appliedState = null;
     let stateApplySequence = 0;
@@ -96,7 +132,31 @@
     let connectivityProbeSequence = 0;
     let lastConnectivityResultSequence = 0;
     let rinkIdDelayTimer = null;
-    let panelType = "technical";
+    const panelTypeLabelKeys = {
+        announcer: "announcer",
+        "data-input-operator": "dataInputOperator",
+        "data-specialist": "dataSpecialist",
+        judging: "judge",
+        referee: "referee",
+        "technical-specialist-1": "technicalSpecialist1",
+        "technical-specialist-2": "technicalSpecialist2",
+        "technical-controller": "technicalController",
+        "video-replay-operator": "videoReplayOperator"
+    };
+    const technicalPanelTypes = new Set([
+        "data-input-operator", "technical-specialist-1", "technical-specialist-2",
+        "technical-controller", "video-replay-operator"
+    ]);
+    const defaultPanelType = "technical-controller";
+    let panelType = defaultPanelType;
+
+    function isTechnicalPanel() {
+        return technicalPanelTypes.has(panelType);
+    }
+
+    function isStandbyOnlyPanel() {
+        return panelType === "announcer" || panelType === "data-specialist";
+    }
     let judgingReviewActive = false;
     let judgingVideoId = "";
     let judgingSourceStartSeconds = 0;
@@ -109,6 +169,10 @@
     let autoplayMutedByBrowser = false;
     let language = localStorage.getItem("ReVueRemoteLanguage") === "fr" ? "fr" : "en";
     let lastStatus = null;
+    let displayedStatus = null;
+    let pendingStatus = null;
+    let statusDelayTimer = null;
+    let statusVisibleAtMs = 0;
     let lastEmpty = null;
     let testToneContext = null;
     let testToneOscillator = null;
@@ -117,11 +181,61 @@
     let fitFrameRequest = 0;
     let connectivityState = "checking";
     let connectivityMessage = "";
+    let transferRate = "";
+    let videoCacheSizeBytes = null;
+    let transferStatsInFlight = false;
+    let transferStatsSequence = 0;
+    let lastTransferredByteTotal = null;
+    let lastTransferSampleAtMs = 0;
+    let rinkMode = "Recorded";
+    let liveHls = null;
+    let liveErrorTimer = null;
+    let liveTransitionTimer = null;
+    let liveEventId = "";
+    let livePrefetchTimer = null;
+    let livePrefetchInFlight = false;
+    let livePrefetchedUrls = new Set();
+    const LIVE_CACHE_NAME = "revue-live-events-v1";
 
     const CONNECTIVITY_INTERVAL_MS = 3000;
     const CONNECTIVITY_TIMEOUT_MS = 3000;
     const FAST_CONNECTION_LIMIT_MS = 500;
+    const TRANSFER_SAMPLE_INTERVAL_MS = 1000;
+    const VRO_CONNECTION_INTERVAL_MS = 3000;
+    const VIDEO_CACHE_SAMPLE_INTERVAL_MS = 5000;
+    const VIDEO_CACHE_NAME = "revue-video-chunks-v3";
+    const VIDEO_CACHE_SCRIPT_URL = new URL("./video-cache-sw.js?v=20261003-live-viewer-id", document.baseURI).href;
+    const STATUS_MIN_DISPLAY_MS = 1000;
     const PANEL_SESSION_KEY = "ReVueRemotePanelType";
+    const REFRESH_RINK_ID_KEY = "ReVueRemoteRefreshRinkId";
+    const videoTransferViewerId = getVideoTransferViewerId();
+    const videoCacheReady = initializeVideoCache();
+
+    async function initializeVideoCache() {
+        if (!("serviceWorker" in navigator) || !("caches" in window)) return false;
+        try {
+            await navigator.serviceWorker.register(VIDEO_CACHE_SCRIPT_URL, {
+                scope: "./",
+                updateViaCache: "none"
+            });
+            if (navigator.serviceWorker.controller?.scriptURL === VIDEO_CACHE_SCRIPT_URL) return true;
+            return await new Promise(resolve => {
+                const timeout = window.setTimeout(() => finish(false), 5000);
+                function finish(ready) {
+                    clearTimeout(timeout);
+                    navigator.serviceWorker.removeEventListener("controllerchange", onChange);
+                    resolve(ready);
+                }
+                function onChange() {
+                    if (navigator.serviceWorker.controller?.scriptURL === VIDEO_CACHE_SCRIPT_URL) finish(true);
+                }
+                navigator.serviceWorker.addEventListener("controllerchange", onChange);
+                onChange();
+            });
+        } catch {
+            return false;
+        }
+    }
 
     function t(key, values = {}) {
         const template = translations[language][key] || translations.en[key] || key;
@@ -138,12 +252,114 @@
         updateLanguageLabel();
         updateJudgingControls();
         updateReviewIndicator(latestState);
+        updateTestPatternLabel(latestState);
         if (lastStatus) playbackStatus.textContent = t(lastStatus.key, lastStatus.values);
+        updatePlaybackStatusVisibility();
         if (lastEmpty) emptyStateMessage.textContent = t(lastEmpty.key, lastEmpty.values);
         updateTestToneOutput();
         setConnectivityState(connectivityState, connectivityState === "checking" ? t("checking") : connectivityMessage);
+        setTransferRate(transferRate);
+        setVideoCacheSize(videoCacheSizeBytes);
+        updateVroConnectionStatus();
+        renderCommunicationStatus();
         scheduleViewportFit();
     }
+
+    function renderCommunicationStatus(state = latestState) {
+        const available = Boolean(sessionCode && viewerSessionId && state);
+        for (const button of communicationPanel.querySelectorAll("[data-communication-indicator]")) {
+            const indicator = communicationIndicators[button.dataset.communicationIndicator];
+            const active = available && state.communicationStatus?.[indicator.property] === true;
+            const dataSpecialistOnly = indicator.property === "competitorScored";
+            button.hidden = dataSpecialistOnly && panelType !== "data-specialist" && !active;
+            button.classList.toggle("active", active);
+            button.classList.toggle("unknown", !available);
+            button.disabled = !available || !indicator.roles.includes(panelType) || Boolean(communicationRequestPending);
+            button.setAttribute("aria-pressed", active ? "true" : "false");
+            button.setAttribute("aria-label", `${t(indicator.alertLabel)}: ${t(!available ? "statusUnavailable" : active ? "statusOn" : "statusOff")}`);
+        }
+    }
+
+    function dismissCommunicationAlert(indicator) {
+        const alert = communicationAlerts[indicator];
+        if (!alert) return;
+        const timer = communicationAlertTimers.get(indicator);
+        if (timer !== undefined) clearTimeout(timer);
+        communicationAlertTimers.delete(indicator);
+        alert.classList.add("hidden");
+        alert.classList.remove("visible");
+        if (indicator === "competitor-scored") videoViewer.classList.remove("scoredFrameAlert");
+    }
+
+    function showCommunicationAlert(events) {
+        for (const { indicator, active } of events) {
+            const alert = communicationAlerts[indicator];
+            if (alert) {
+                if (indicator === "competitor-scored" && !active) {
+                    dismissCommunicationAlert(indicator);
+                    continue;
+                }
+                communicationAlertStack.appendChild(alert);
+                alert.classList.toggle("not-ready", !active);
+                if (indicator === "competitor-scored") videoViewer.classList.add("scoredFrameAlert");
+                if (panelReadyIndicators.includes(indicator)) {
+                    alert.classList.toggle("ready-first", readyIndicatorOrder[0] === indicator);
+                    alert.classList.toggle("ready-second", readyIndicatorOrder[1] === indicator);
+                    alert.querySelector(".communicationAlertReadyIcon").classList.toggle("hidden", !active);
+                    alert.querySelector(".communicationAlertNotReadyIcon").classList.toggle("hidden", active);
+                    alert.querySelector(".communicationAlertReadyMessage").classList.toggle("hidden", !active);
+                    alert.querySelector(".communicationAlertNotReadyMessage").classList.toggle("hidden", active);
+                }
+                alert.classList.remove("hidden", "visible");
+                requestAnimationFrame(() => alert.classList.add("visible"));
+                const previousAlertTimer = communicationAlertTimers.get(indicator);
+                if (previousAlertTimer !== undefined) clearTimeout(previousAlertTimer);
+                communicationAlertTimers.set(indicator, window.setTimeout(() => dismissCommunicationAlert(indicator), 6000));
+            }
+            if (!active) continue;
+            const button = communicationPanel.querySelector(`[data-communication-indicator="${indicator}"]`);
+            if (!button) continue;
+            if (panelReadyIndicators.includes(indicator)) {
+                button.classList.toggle("ready-first", readyIndicatorOrder[0] === indicator);
+                button.classList.toggle("ready-second", readyIndicatorOrder[1] === indicator);
+            }
+            button.classList.remove("justActivated");
+            const previousTimer = communicationButtonTimers.get(indicator);
+            if (previousTimer) clearTimeout(previousTimer);
+            requestAnimationFrame(() => button.classList.add("justActivated"));
+            communicationButtonTimers.set(indicator, window.setTimeout(() => {
+                button.classList.remove("justActivated");
+                communicationButtonTimers.delete(indicator);
+            }, 2700));
+        }
+    }
+
+    communicationPanel.addEventListener("click", async event => {
+        const button = event.target.closest("[data-communication-indicator]");
+        if (!button || button.disabled || !sessionCode || !viewerSessionId) return;
+        const indicator = button.dataset.communicationIndicator;
+        const definition = communicationIndicators[indicator];
+        if (!definition || !definition.roles.includes(panelType)) return;
+        const code = sessionCode;
+        const token = viewerSessionId;
+        const active = latestState?.communicationStatus?.[definition.property] !== true;
+        communicationRequestPending = token;
+        communicationFeedback.textContent = "";
+        renderCommunicationStatus();
+        try {
+            const response = await fetch(apiUrl(`sessions/${encodeURIComponent(code)}/communication-status`), {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ viewerSessionId: token, indicator, active })
+            });
+            if (!response.ok) throw new Error("Status update failed");
+        } catch {
+            if (sessionCode === code) communicationFeedback.textContent = t("statusUpdateFailed");
+        } finally {
+            if (communicationRequestPending === token) communicationRequestPending = "";
+            renderCommunicationStatus();
+        }
+    });
 
     function normalizeCode(value) {
         return String(value || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
@@ -153,15 +369,373 @@
         return new URL(`api/${String(path || "").replace(/^\/+/, "")}`, document.baseURI).toString();
     }
 
-    function setStatus(key, values = {}) {
-        lastStatus = { key, values };
-        playbackStatus.textContent = t(key, values);
+    function getVideoTransferViewerId() {
+        // Duplicating a browser tab copies sessionStorage, including a saved
+        // viewer ID. Give each page instance its own transfer limit instead.
+        return globalThis.crypto?.randomUUID?.() ||
+            `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+    }
+
+    function videoContentUrl(videoId) {
+        const url = new URL(apiUrl(`sessions/${encodeURIComponent(sessionCode)}/videos/${encodeURIComponent(videoId)}/content`));
+        url.searchParams.set("viewer", videoTransferViewerId);
+        return url.toString();
+    }
+
+    function livePreviewUrl() {
+        const url = new URL(apiUrl(`sessions/${encodeURIComponent(sessionCode)}/live/preview/index.m3u8`));
+        url.searchParams.set("viewer", videoTransferViewerId);
+        return url.toString();
+    }
+
+    function liveEventUrl(eventId) {
+        const url = new URL(apiUrl(`sessions/${encodeURIComponent(sessionCode)}/live/events/${encodeURIComponent(eventId)}/index.m3u8`));
+        url.searchParams.set("viewer", videoTransferViewerId);
+        return url.toString();
+    }
+
+    function stopLivePrefetch() {
+        if (livePrefetchTimer !== null) clearInterval(livePrefetchTimer);
+        livePrefetchTimer = null;
+    }
+
+    async function purgeLiveEventCache(eventId) {
+        if (!sessionCode || !/^[a-f0-9]{32}$/.test(eventId)) return;
+        const prefix = `/api/sessions/${sessionCode}/live/events/${eventId}/`;
+        if (await videoCacheReady && navigator.serviceWorker.controller) {
+            try {
+                await new Promise((resolve, reject) => {
+                    const channel = new MessageChannel();
+                    const timeout = setTimeout(() => reject(new Error("Live cache purge timed out")), 10000);
+                    channel.port1.onmessage = event => {
+                        clearTimeout(timeout);
+                        channel.port1.close();
+                        event.data?.ok ? resolve() : reject(new Error("Live cache purge failed"));
+                    };
+                    navigator.serviceWorker.controller.postMessage({ type: "purge-live-event", prefix }, [channel.port2]);
+                });
+                return;
+            } catch { }
+        }
+        try {
+            const cache = await caches.open(LIVE_CACHE_NAME);
+            await Promise.all((await cache.keys()).filter(request =>
+                new URL(request.url).pathname.startsWith(prefix)).map(request => cache.delete(request)));
+        } catch { }
+    }
+
+    async function prefetchLiveSegments(eventId) {
+        if (livePrefetchInFlight || !sessionCode || eventId !== liveEventId ||
+            isStandbyAfterStop(latestState) ||
+            latestState?.mode === "preparing" || latestState?.mode === "recording" ||
+            !await videoCacheReady) return;
+        livePrefetchInFlight = true;
+        try {
+            const playlistUrl = liveEventUrl(eventId);
+            const response = await fetch(playlistUrl, { cache: "no-store" });
+            if (!response.ok) return;
+            const playlist = await response.text();
+            const names = [];
+            const init = playlist.match(/#EXT-X-MAP:URI="([^"]+)"/);
+            if (init) names.push(init[1]);
+            for (const line of playlist.split(/\r?\n/)) {
+                const name = line.trim();
+                if (name && !name.startsWith("#")) names.push(name);
+            }
+            const eventPrefix = `/api/sessions/${sessionCode}/live/events/${eventId}/`;
+            const urls = names.map(name => new URL(name, playlistUrl)).filter(url =>
+                url.origin === location.origin && url.pathname.startsWith(eventPrefix));
+            const cache = await caches.open(LIVE_CACHE_NAME);
+            for (const url of urls) {
+                if (eventId !== liveEventId || isStandbyAfterStop(latestState)) return;
+                if (livePrefetchedUrls.has(url.pathname)) continue;
+                if (await cache.match(url.href, { ignoreSearch: true })) {
+                    livePrefetchedUrls.add(url.pathname);
+                    continue;
+                }
+                const segment = await fetch(url.toString());
+                if (segment.ok) {
+                    await segment.arrayBuffer();
+                    if (await cache.match(url.href, { ignoreSearch: true }))
+                        livePrefetchedUrls.add(url.pathname);
+                }
+                // Playback has priority; fill missing history gradually after
+                // Stop instead of downloading the whole event in one burst.
+                break;
+            }
+        } catch { }
+        finally { livePrefetchInFlight = false; }
+    }
+
+    function startLivePrefetch(eventId) {
+        if (liveEventId === eventId && livePrefetchTimer !== null) return;
+        stopLivePrefetch();
+        liveEventId = eventId;
+        livePrefetchedUrls = new Set();
+        if (!eventId) return;
+        void prefetchLiveSegments(eventId);
+        livePrefetchTimer = setInterval(() => { void prefetchLiveSegments(eventId); }, 500);
+    }
+
+    function attachLiveHls(source, autoplay, startPositionSeconds =
+        source.includes("/live/events/") ? 0 : -1) {
+        if (assignedVideoSource === source) return false;
+        if (rinkMode === "Live" && assignedVideoSource.includes("/live/")) {
+            holdLiveFrame();
+            if (liveTransitionTimer === null) {
+                liveTransitionTimer = setTimeout(() => {
+                    clearLiveFrame();
+                    if (rinkMode === "Live" && video.readyState < 2)
+                        setEmpty("waitingForVideo");
+                }, 8000);
+            }
+        }
+        if (liveErrorTimer !== null) {
+            clearTimeout(liveErrorTimer);
+            liveErrorTimer = null;
+        }
+        video.pause();
+        liveHls?.destroy();
+        liveHls = null;
+        video.removeAttribute("src");
+        video.load();
+        currentVideoSource = source;
+        assignedVideoSource = source;
+        currentVideoId = source.includes("/live/events/") ? liveEventId : "";
+        if (window.Hls?.isSupported()) {
+            const hls = new window.Hls({
+                lowLatencyMode: false,
+                liveSyncDuration: 5,
+                // Existing viewers follow the event from frame zero. A page
+                // opened during recording joins the current live position.
+                startPosition: startPositionSeconds,
+                backBufferLength: 60,
+                maxBufferLength: 10
+            });
+            liveHls = hls;
+            hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
+                if (liveHls === hls && autoplay) void playWithAutoplayFallback();
+            });
+            hls.on(window.Hls.Events.ERROR, (_, detail) => {
+                if (!detail.fatal || liveHls !== hls) return;
+                console.warn("Live stream playback error", detail.type, detail.details,
+                    detail.response?.code || "", source);
+                if (detail.type === window.Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
+                else {
+                    const resumeAt = source.includes("/live/events/")
+                        ? Math.max(0, Number(video.currentTime) || 0) : -1;
+                    setTimeout(() => {
+                    if (liveHls === hls && assignedVideoSource === source) {
+                        holdLiveFrame();
+                        hideEmpty();
+                        if (liveTransitionTimer === null) {
+                            liveTransitionTimer = setTimeout(() => {
+                                clearLiveFrame();
+                                if (rinkMode === "Live" && video.readyState < 2)
+                                    setEmpty("waitingForVideo");
+                            }, 8000);
+                        }
+                        assignedVideoSource = "";
+                        attachLiveHls(source, autoplay, resumeAt);
+                    }
+                    }, 3000);
+                }
+            });
+            hls.loadSource(source);
+            hls.attachMedia(video);
+        } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+            if (source.includes("/live/events/")) {
+                video.addEventListener("loadedmetadata", () => {
+                    if (assignedVideoSource !== source) return;
+                    if (startPositionSeconds >= 0) {
+                        try { video.currentTime = startPositionSeconds; } catch { }
+                    }
+                    if (autoplay) void playWithAutoplayFallback();
+                }, { once: true });
+            }
+            video.src = source;
+            video.load();
+            if (autoplay && !source.includes("/live/events/")) void playWithAutoplayFallback();
+        } else setStatus("cacheUnavailable");
+        return true;
+    }
+
+    function clearLiveFrame() {
+        if (liveTransitionTimer !== null) clearTimeout(liveTransitionTimer);
+        liveTransitionTimer = null;
+        liveTransitionFrame.classList.remove("visible");
+    }
+
+    function holdLiveFrame() {
+        if (video.readyState < 2 || !video.videoWidth || !video.videoHeight) return;
+        try {
+            liveTransitionFrame.width = video.videoWidth;
+            liveTransitionFrame.height = video.videoHeight;
+            liveTransitionFrame.getContext("2d").drawImage(video, 0, 0);
+            liveTransitionFrame.classList.add("visible");
+            if (liveTransitionTimer !== null) clearTimeout(liveTransitionTimer);
+            liveTransitionTimer = setTimeout(() => {
+                clearLiveFrame();
+                if (rinkMode === "Live" && video.readyState < 2)
+                    setEmpty("waitingForVideo");
+            }, 8000);
+        } catch { /* A frame is unavailable while the decoder changes streams. */ }
+    }
+
+    function transferStatsUrl() {
+        const url = new URL(apiUrl(`sessions/${encodeURIComponent(sessionCode)}/transfer`));
+        url.searchParams.set("viewer", videoTransferViewerId);
+        return url.toString();
+    }
+
+    async function purgeBrowserVideoCache(source) {
+        if (!source) return;
+        if (await videoCacheReady && navigator.serviceWorker.controller) {
+            try {
+                await new Promise((resolve, reject) => {
+                    const channel = new MessageChannel();
+                    const timeout = window.setTimeout(() => reject(new Error("Cache purge timed out")), 10000);
+                    channel.port1.onmessage = event => {
+                        clearTimeout(timeout);
+                        channel.port1.close();
+                        event.data?.ok ? resolve() : reject(new Error("Cache purge failed"));
+                    };
+                    navigator.serviceWorker.controller.postMessage({ type: "purge-video", url: source }, [channel.port2]);
+                });
+                return;
+            } catch {
+                // Recover if an older worker cannot handle the message.
+            }
+        }
+        try {
+            const cache = await caches.open(VIDEO_CACHE_NAME);
+            const path = new URL(source).pathname;
+            await Promise.all((await cache.keys())
+                .filter(request => new URL(request.url).pathname === path)
+                .map(request => cache.delete(request)));
+        } catch { }
+        if (sessionCode) await fetch(apiUrl(`sessions/${encodeURIComponent(sessionCode)}/viewer-cache/clear`), {
+            method: "POST", cache: "no-store"
+        }).catch(() => { });
+    }
+
+    async function cachedVideoSize(source) {
+        if (!source || !await videoCacheReady || cacheSizeInFlight) return;
+        cacheSizeInFlight = true;
+        try {
+            if (rinkMode === "Live") {
+                if (!liveEventId) { setVideoCacheSize(0); return; }
+                const cache = await caches.open(LIVE_CACHE_NAME);
+                const prefix = `/api/sessions/${sessionCode}/live/events/${liveEventId}/`;
+                const requests = (await cache.keys()).filter(request => new URL(request.url).pathname.startsWith(prefix));
+                let bytes = 0;
+                for (const request of requests) {
+                    const response = await cache.match(request);
+                    bytes += Number(response?.headers.get("Content-Length") || 0);
+                }
+                setVideoCacheSize(bytes);
+                return;
+            }
+            const cache = await caches.open(VIDEO_CACHE_NAME);
+            const path = new URL(source).pathname;
+            const keys = await cache.keys();
+            const bytes = keys.reduce((sum, request) => {
+                const url = new URL(request.url);
+                return url.pathname === path && url.searchParams.has("revue_chunk")
+                    ? sum + Number(url.searchParams.get("bytes") || 0) : sum;
+            }, 0);
+            if (source === currentVideoSource) setVideoCacheSize(bytes);
+        } catch {
+            if (source === currentVideoSource) setVideoCacheSize(null);
+        } finally {
+            cacheSizeInFlight = false;
+        }
+    }
+
+    function reportVideoBuffer() {
+        if (!currentVideoSource || !navigator.serviceWorker?.controller) return;
+        const position = Number(video.currentTime) || 0;
+        let bufferedAhead = 0;
+        for (let index = 0; index < video.buffered.length; index++) {
+            if (video.buffered.start(index) <= position + 0.05 && video.buffered.end(index) >= position) {
+                bufferedAhead = Math.max(0, video.buffered.end(index) - position);
+                break;
+            }
+        }
+        navigator.serviceWorker.controller.postMessage({
+            type: "video-buffer",
+            url: currentVideoSource,
+            duration: Number.isFinite(video.duration) ? video.duration : 0,
+            position,
+            bufferedAhead,
+            mode: String(latestState?.mode || ""),
+            recordedEnd: isReviewState(latestState)
+                ? Math.max(0, Number(latestState.positionSeconds || 0) -
+                    Number(latestState.timelinePositionSeconds || 0) +
+                    Number(latestState.timelineDurationSeconds || 0))
+                : null,
+            active: !isStandbyAfterStop(latestState) && !isOperatorOfflineState(latestState) &&
+                (isSelectedVideoAwaitingRecord(latestState) || latestState?.playbackEnabled === true)
+        });
+    }
+
+    function statusesMatch(first, second) {
+        return !!first && !!second && first.key === second.key &&
+            (first.key !== null || first.message === second.message);
+    }
+
+    function refreshDisplayedStatus(status) {
+        displayedStatus = status;
+        lastStatus = status.key === null ? null : { key: status.key, values: status.values };
+        playbackStatus.textContent = status.key === null ? status.message : t(status.key, status.values);
+        updatePlaybackStatusVisibility();
         scheduleViewportFit();
     }
 
+    function displayStatus(status) {
+        if (statusDelayTimer !== null) clearTimeout(statusDelayTimer);
+        statusDelayTimer = null;
+        pendingStatus = null;
+        refreshDisplayedStatus(status);
+        statusVisibleAtMs = performance.now();
+    }
+
+    function requestStatus(status) {
+        if (!displayedStatus) {
+            displayStatus(status);
+            return;
+        }
+
+        if (statusesMatch(displayedStatus, status)) {
+            refreshDisplayedStatus(status);
+            return;
+        }
+
+        pendingStatus = status;
+        if (statusDelayTimer !== null) clearTimeout(statusDelayTimer);
+        const remainingMs = Math.max(0, STATUS_MIN_DISPLAY_MS - (performance.now() - statusVisibleAtMs));
+        statusDelayTimer = window.setTimeout(() => {
+            const nextStatus = pendingStatus;
+            if (nextStatus) displayStatus(nextStatus);
+        }, remainingMs);
+    }
+
+    function setStatus(key, values = {}) {
+        requestStatus({ key, values });
+    }
+
     function setStatusText(message) {
+        requestStatus({ key: null, message: String(message || "") });
+    }
+
+    function clearStatus() {
+        if (statusDelayTimer !== null) clearTimeout(statusDelayTimer);
+        statusDelayTimer = null;
+        pendingStatus = null;
+        displayedStatus = null;
         lastStatus = null;
-        playbackStatus.textContent = message;
+        playbackStatus.textContent = "";
+        playbackStatus.hidden = true;
         scheduleViewportFit();
     }
 
@@ -216,11 +790,13 @@
         rinkIdDelayTimer = window.setInterval(update, 250);
     }
 
-    function playbackStatusText(state, isPlaying) {
-        const zoomPercent = Math.round(Math.max(1, Number(state?.zoomScale || 1)) * 100);
+    function playbackStatusText(state, isPlaying, actualPlaybackRate = null) {
+        const zoomPercent = isTechnicalPanel()
+            ? Math.round(Math.max(1, Number(state?.zoomScale || 1)) * 100)
+            : 100;
         const zoomText = zoomPercent === 100 ? "" : t("zoom", { percent: zoomPercent });
         if (!isPlaying) return t("playbackPaused", { zoom: zoomText });
-        const rate = Math.max(0.05, Math.min(4, Number(state?.playbackRate || 1)));
+        const rate = Math.max(0.05, Math.min(4, Number(actualPlaybackRate ?? state?.playbackRate ?? 1)));
         const speed = Math.abs(rate - 1) < 0.0005
             ? t("normalSpeed")
             : t("speed", { speed: rate.toFixed(2).replace(/\.00$/, "").replace(/(\.\d)0$/, "$1") });
@@ -231,25 +807,70 @@
         return String(state?.mode || "").toLowerCase() === "recording";
     }
 
-    function isReviewState(state) {
+    function isOperatorOfflineState(state) {
+        return String(state?.mode || "").toLowerCase() === "operator-offline";
+    }
+
+    function updateVroConnectionStatus() {
+        const connected = /^[A-Z0-9]{6}$/.test(sessionCode) &&
+            eventSource?.readyState === EventSource.OPEN &&
+            latestState?.operatorConnected === true;
+        const message = t(connected ? "vroOnline" : "vroOffline");
+        if (vroConnectionStatus.textContent !== message) vroConnectionStatus.textContent = message;
+        vroConnectionStatus.classList.toggle("connected", connected);
+        vroConnectionStatus.classList.toggle("disconnected", !connected);
+    }
+
+    function isSnowScreenVisible() {
+        return !emptyState.classList.contains("hidden") && emptyState.classList.contains("enterRinkId");
+    }
+
+    function isRinkIdDelayStatus() {
+        return ["invalidRinkDelay", "finalAttemptAvailable", "ipBlocked"].includes(lastStatus?.key);
+    }
+
+    function updatePlaybackStatusVisibility() {
+        playbackStatus.hidden = isStandbyAfterStop(latestState) || isOperatorOfflineState(latestState) ||
+            (isSnowScreenVisible() && !isRinkIdDelayStatus()) || isRecordingState(latestState);
+    }
+
+    function isPostRecordingState(state) {
         return !!state?.playbackEnabled && !!state?.videoId && !isRecordingState(state) &&
             String(state?.mode || "").toLowerCase() !== "ready";
     }
 
+    function isStandbyAfterStop(state) {
+        return isStandbyOnlyPanel() && !!state?.videoId &&
+            (isPostRecordingState(state) || Number(state?.reviewStartedAtUnixMs) > 0);
+    }
+
+    function isReviewState(state) {
+        return !isStandbyOnlyPanel() && isPostRecordingState(state);
+    }
+
     function syncVideoAudio() {
-        // Technical clients hear the live/Recording feed according to their
+        // Technical roles hear the live/Recording feed according to their
         // own controls, but VRO replay must always be silent. Keep the saved
         // mute preference untouched so it is restored when Recording resumes.
-        video.muted = muteInput.checked || (panelType === "technical" && isReviewState(latestState));
+        volumeInput.disabled = muteInput.checked;
+        video.muted = muteInput.checked || (isTechnicalPanel() && isReviewState(latestState));
     }
 
     function isSelectedVideoAwaitingRecord(state) {
-        return !!state?.videoId && state.mode === "ready" && state.playbackEnabled !== true;
+        return !!state?.videoId && (state.mode === "ready" || state.mode === "preparing") &&
+            state.playbackEnabled !== true;
+    }
+
+    function updateTestPatternLabel(state) {
+        testPatternLabel.textContent = t(isStandbyAfterStop(state) ||
+            (isSelectedVideoAwaitingRecord(state) && !isOperatorOfflineState(state))
+            ? "standBy" : "noSignal");
     }
 
     function updateReviewIndicator(state) {
         reviewIndicator.classList.remove("live", "review", "hidden");
-        if (isRecordingState(state) || isSelectedVideoAwaitingRecord(state)) {
+        if (isRecordingState(state) && state?.playbackEnabled === true && state?.isPlaying === true &&
+            !!state?.videoId && emptyState.classList.contains("hidden")) {
             reviewIndicator.classList.add("live");
             reviewIndicatorText.textContent = t("live");
         } else if (isReviewState(state)) {
@@ -269,7 +890,7 @@
     }
 
     function isJudgingReview(state = latestState) {
-        return panelType !== "technical" && isReviewState(state);
+        return !isTechnicalPanel() && isReviewState(state);
     }
 
     function timelineDuration(state = latestState) {
@@ -278,7 +899,8 @@
 
     function updateJudgingControls() {
         const active = isJudgingReview() && judgingReviewActive;
-        const hideTimelineDuringBroadcast = panelType !== "technical" && isRecordingState(latestState);
+        const hideTimelineDuringBroadcast = (rinkMode === "Live" && isOperatorOfflineState(latestState)) ||
+            (!isTechnicalPanel() && isRecordingState(latestState));
         timelineControlRow.hidden = hideTimelineDuringBroadcast;
         timelineCanvas.setAttribute("aria-hidden", hideTimelineDuringBroadcast ? "true" : "false");
         judgingTransport.classList.toggle("hidden", !active);
@@ -295,7 +917,7 @@
     }
 
     function judgingStatusText() {
-        return playbackStatusText(latestState, judgingIsPlaying);
+        return playbackStatusText(latestState, judgingIsPlaying, video.playbackRate);
     }
 
     function statusWithAutoplayNotice(message) {
@@ -332,11 +954,85 @@
         networkIndicator.setAttribute(
             "aria-label",
             state === "disconnected"
-                ? t("serverDisconnected")
-                : state === "checking"
-                ? t("checkingServer")
-                : t("serverLatency", { message })
+            ? t("serverDisconnected")
+            : state === "checking"
+            ? t("checkingServer")
+            : t("serverLatency", { message })
         );
+    }
+
+    function setTransferRate(rate) {
+        const numericRate = typeof rate === "number" && Number.isFinite(rate) ? rate : null;
+        const displayRate = numericRate !== null
+            ? `${numericRate.toFixed(2)} Mbps`
+            : String(rate ?? "").trim();
+        transferRate = displayRate;
+        networkTransfer.textContent = displayRate || "— Mbps";
+        networkTransfer.setAttribute(
+            "aria-label",
+            displayRate ? t("dataTransfer", { rate: displayRate }) : t("dataTransferUnavailable")
+        );
+    }
+
+    function setVideoCacheSize(byteCount) {
+        videoCacheSizeBytes = Number.isFinite(byteCount) && byteCount >= 0 ? byteCount : null;
+        const size = videoCacheSizeBytes === null ? "" : `${(videoCacheSizeBytes / 1048576).toFixed(1)} MB`;
+        networkCache.textContent = size || "— MB";
+        networkCache.setAttribute(
+            "aria-label",
+            size ? t("localVideoCache", { size }) : t("localVideoCacheUnavailable")
+        );
+    }
+
+    function resetTransferRate() {
+        transferStatsSequence++;
+        transferStatsInFlight = false;
+        lastTransferredByteTotal = null;
+        lastTransferSampleAtMs = 0;
+        setTransferRate(0);
+        setVideoCacheSize(0);
+    }
+
+    async function updateTransferRate() {
+        if (isStandbyAfterStop(latestState)) {
+            setTransferRate(0);
+            return;
+        }
+        if (!currentVideoSource) {
+            resetTransferRate();
+            return;
+        }
+
+        if (transferStatsInFlight) return;
+        transferStatsInFlight = true;
+        const sequence = transferStatsSequence;
+        const source = currentVideoSource;
+        try {
+            const response = await fetch(transferStatsUrl(), { cache: "no-store" });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const { bytes } = await response.json();
+            if (sequence !== transferStatsSequence || source !== currentVideoSource) return;
+
+            const sampledAtMs = performance.now();
+            const transferredTotal = Math.max(0, Number(bytes) || 0);
+            if (lastTransferredByteTotal === null) {
+                lastTransferredByteTotal = transferredTotal;
+                lastTransferSampleAtMs = sampledAtMs;
+                setTransferRate("0.00 Mbps");
+                return;
+            }
+
+            const elapsedMs = Math.max(1, sampledAtMs - lastTransferSampleAtMs);
+            const transferredBytes = Math.max(0, transferredTotal - lastTransferredByteTotal);
+            const megabitsPerSecond = transferredBytes * 8 / (elapsedMs * 1000);
+            lastTransferredByteTotal = transferredTotal;
+            lastTransferSampleAtMs = sampledAtMs;
+            setTransferRate(`${megabitsPerSecond.toFixed(2)} Mbps`);
+        } catch {
+            if (sequence === transferStatsSequence) setTransferRate("");
+        } finally {
+            if (sequence === transferStatsSequence) transferStatsInFlight = false;
+        }
     }
 
     async function probeServerConnectivity() {
@@ -369,21 +1065,29 @@
     }
 
     function setEmpty(key, values = {}) {
-        if (key !== "waitingForVideo") stopTestTone();
+        if (key !== "enterRinkId" && key !== "waitingForVideo" && key !== "operatorOffline") stopTestTone();
         lastEmpty = { key, values };
         emptyStateMessage.textContent = t(key, values);
+        updateTestPatternLabel(latestState);
         emptyState.classList.toggle("waitingForVideo", key === "waitingForVideo");
         emptyState.classList.toggle("enterRinkId", key === "enterRinkId");
         emptyState.classList.toggle("operatorOffline", key === "operatorOffline");
         emptyState.classList.remove("hidden");
-        timelineSection.hidden = true;
+        updateReviewIndicator(latestState);
+        updatePlaybackStatusVisibility();
+        const showDiagnostics = /^[A-Z0-9]{6}$/.test(sessionCode);
+        timelineSection.hidden = !showDiagnostics;
+        timelineSection.classList.toggle("diagnosticsOnly", showDiagnostics);
         scheduleViewportFit();
     }
 
     function hideEmpty() {
         stopTestTone();
         emptyState.classList.add("hidden");
+        updateReviewIndicator(latestState);
+        updatePlaybackStatusVisibility();
         timelineSection.hidden = false;
+        timelineSection.classList.remove("diagnosticsOnly");
         scheduleViewportFit();
     }
 
@@ -464,21 +1168,78 @@
     function closeConnection() {
         if (eventSource) eventSource.close();
         eventSource = null;
+        for (const indicator of Object.keys(communicationAlerts)) dismissCommunicationAlert(indicator);
+        viewerSessionId = "";
+        communicationRequestPending = "";
+        communicationFeedback.textContent = "";
+        renderCommunicationStatus();
         if (reconnectTimer !== null) clearTimeout(reconnectTimer);
         reconnectTimer = null;
+        updateVroConnectionStatus();
+    }
+
+    function openPlaybackEventStream(code, attempt) {
+        const url = new URL(apiUrl(`sessions/${encodeURIComponent(code)}/events`), document.baseURI);
+        url.searchParams.set("role", panelType);
+        const source = new EventSource(url.href);
+        eventSource = source;
+        source.addEventListener("viewer-session", event => {
+            if (attempt !== connectionAttempt || eventSource !== source) return;
+            try {
+                const token = JSON.parse(event.data);
+                if (/^[a-f0-9]{32}$/i.test(token)) {
+                    viewerSessionId = token;
+                    renderCommunicationStatus();
+                }
+            } catch { }
+        });
+        source.addEventListener("playback", event => {
+            if (attempt !== connectionAttempt || eventSource !== source) return;
+            try {
+                applyState(JSON.parse(event.data)).catch(() => { });
+            } catch {
+                setStatus("playbackUnreadable");
+            }
+        });
+        source.onopen = () => {
+            if (attempt !== connectionAttempt || eventSource !== source) return;
+            setStatus("connectedWaitingVro", { code });
+            updateVroConnectionStatus();
+        };
+        source.onerror = () => {
+            if (attempt !== connectionAttempt || eventSource !== source) return;
+            closeConnection();
+            setStatus("connectionInterrupted", { code });
+            reconnectTimer = setTimeout(() => connect(code), 2000);
+        };
     }
 
     function showEnterRinkId() {
+        clearLiveFrame();
+        if (liveErrorTimer !== null) {
+            clearTimeout(liveErrorTimer);
+            liveErrorTimer = null;
+        }
+        const oldLiveEventId = liveEventId;
+        stopLivePrefetch();
+        liveHls?.destroy();
+        liveHls = null;
+        liveEventId = "";
+        if (oldLiveEventId) void purgeLiveEventCache(oldLiveEventId);
         connectionAttempt++;
         closeConnection();
         video.pause();
+        const sourceToPurge = currentVideoSource;
         if (video.hasAttribute("src")) {
             video.removeAttribute("src");
             video.load();
         }
+        if (sourceToPurge && !sourceToPurge.includes("/live/")) purgeBrowserVideoCache(sourceToPurge).catch(() => { });
         sessionCode = "";
         currentVideoId = "";
         currentVideoSource = "";
+        assignedVideoSource = "";
+        rinkMode = "Recorded";
         latestState = null;
         appliedState = null;
         stateApplySequence++;
@@ -497,6 +1258,8 @@
 
     function normalizeToDuration(position) {
         if (!Number.isFinite(video.duration) || video.duration <= 0) return position;
+        if (rinkMode === "Live" && assignedVideoSource.includes("/live/events/"))
+            return Math.max(0, Math.min(position, Math.max(0, video.duration - 0.04)));
         return position % video.duration;
     }
 
@@ -601,7 +1364,8 @@
         timelineCanvas.setAttribute("aria-valuemax", String(Math.round(duration)));
         timelineCanvas.setAttribute("aria-valuenow", String(Math.round(playheadSeconds)));
         timelineCanvas.setAttribute("aria-valuetext", formatSignedTimelineTime(playheadSeconds - displayOriginSeconds));
-        const xFor = seconds => Math.max(0, Math.min(width, (Number(seconds) / duration) * width));
+        const rawXFor = seconds => (Number(seconds) / duration) * width;
+        const xFor = seconds => Math.max(0, Math.min(width, rawXFor(seconds)));
         const barTop = 3;
         const barHeight = 36;
         const tickHeight = 9;
@@ -695,7 +1459,9 @@
             : 0;
         for (let displaySeconds = firstTickDisplaySeconds; displaySeconds <= maxDisplaySeconds + 0.001; displaySeconds += 5) {
             const timelineSeconds = useShiftedTimeline ? displaySeconds + displayOriginSeconds : displaySeconds;
-            const x = Math.round(xFor(timelineSeconds)) + 0.5;
+            const rawX = rawXFor(timelineSeconds);
+            if (!Number.isFinite(rawX) || rawX < -0.5 || rawX > width + 0.5) continue;
+            const x = Math.round(rawX) + 0.5;
             const major = Math.abs(displaySeconds / 15 - Math.round(displaySeconds / 15)) < 1e-9;
             ctx.beginPath();
             ctx.moveTo(x, barBottom - tickHeight);
@@ -711,17 +1477,27 @@
         const firstLabelDisplaySeconds = useShiftedTimeline
             ? Math.ceil(minDisplaySeconds / 15) * 15
             : 15;
+        let lastLabelRight = -Infinity;
+        const drawTimeLabel = (text, timelineSeconds) => {
+            const rawX = rawXFor(timelineSeconds);
+            if (!Number.isFinite(rawX) || rawX < -0.5 || rawX > width + 0.5) return;
+            const textWidth = ctx.measureText(text).width;
+            const edgePadding = 3;
+            if (textWidth + edgePadding * 2 > width) return;
+            const x = Math.max(edgePadding + textWidth / 2,
+                Math.min(width - edgePadding - textWidth / 2, rawX));
+            if (x - textWidth / 2 < lastLabelRight + 8) return;
+            ctx.fillText(text, x, labelY);
+            lastLabelRight = x + textWidth / 2;
+        };
         if (useShiftedTimeline && minDisplaySeconds < -0.001 && firstLabelDisplaySeconds > minDisplaySeconds + 0.001) {
-            ctx.textAlign = "left";
-            ctx.fillText(formatSignedTimelineTime(minDisplaySeconds), 2, labelY);
+            drawTimeLabel(formatSignedTimelineTime(minDisplaySeconds), 0);
         }
         for (let displaySeconds = firstLabelDisplaySeconds; displaySeconds <= maxDisplaySeconds + 0.001; displaySeconds += 15) {
             const timelineSeconds = useShiftedTimeline ? displaySeconds + displayOriginSeconds : displaySeconds;
-            ctx.textAlign = "center";
-            ctx.fillText(
+            drawTimeLabel(
                 useShiftedTimeline ? formatSignedTimelineTime(displaySeconds) : formatTimelineTime(displaySeconds),
-                Math.round(xFor(timelineSeconds)),
-                labelY
+                timelineSeconds
             );
         }
 
@@ -757,6 +1533,13 @@
     }
 
     function applyZoomState(state) {
+        video.dataset.viewerRole = panelType;
+        if (!isTechnicalPanel()) {
+            // Judge-style review stays at the original framing even if
+            // the operator zooms the same replay for a Technical role.
+            video.style.transform = "none";
+            return;
+        }
         const scale = Math.max(1, Math.min(2.5, Number(state?.zoomScale || 1)));
         const offsetX = Math.max(-2, Math.min(0, Number(state?.zoomOffsetX || 0)));
         const offsetY = Math.max(-2, Math.min(0, Number(state?.zoomOffsetY || 0)));
@@ -817,6 +1600,30 @@
         updateJudgingControls();
     }
 
+    function showStandbyAfterStop(state) {
+        stopLivePrefetch();
+        clearLiveFrame();
+        if (liveErrorTimer !== null) clearTimeout(liveErrorTimer);
+        liveErrorTimer = null;
+        liveHls?.destroy();
+        liveHls = null;
+        video.pause();
+        const hadSource = !!assignedVideoSource || video.hasAttribute("src");
+        assignedVideoSource = "";
+        if (hadSource) {
+            video.removeAttribute("src");
+            video.load();
+            transferStatsSequence++;
+            transferStatsInFlight = false;
+            lastTransferredByteTotal = null;
+            lastTransferSampleAtMs = 0;
+        }
+        resetJudgingReview();
+        appliedState = state;
+        setEmpty("waitingForVideo");
+        setTransferRate(0);
+    }
+
     async function seekJudgingPosition(positionSeconds, sequence = stateApplySequence) {
         const duration = timelineDuration();
         judgingPositionSeconds = Math.max(0, Math.min(duration, Number(positionSeconds) || 0));
@@ -830,6 +1637,9 @@
 
     async function enterJudgingReview(state, sequence, sourceChanged) {
         const videoId = String(state?.videoId || "");
+        // Judge-style playback is local, so reset the browser element before
+        // any status update can read a prior technical transport rate.
+        video.playbackRate = 1;
         const startingTimelinePosition = Math.max(0, Math.min(
             timelineDuration(state),
             Number(state?.timelinePositionSeconds) || 0
@@ -858,11 +1668,104 @@
 
         if (sequence !== stateApplySequence) return;
         hideEmpty();
-        video.playbackRate = 1;
         appliedState = state;
         updateJudgingControls();
         drawTimeline();
         setStatusText(statusWithAutoplayNotice(judgingStatusText()));
+    }
+
+    async function applyLiveState(state, previousState, sequence) {
+        if (isStandbyAfterStop(state)) {
+            showStandbyAfterStop(state);
+            return;
+        }
+        const eventId = String(state?.videoId || "");
+        if (eventId && (eventId !== liveEventId || livePrefetchTimer === null)) {
+            const oldEventId = liveEventId;
+            startLivePrefetch(eventId);
+            if (oldEventId && oldEventId !== eventId) void purgeLiveEventCache(oldEventId);
+        }
+        if (!eventId) {
+            if (liveEventId && state?.operatorConnected === true) {
+                const oldEventId = liveEventId;
+                stopLivePrefetch();
+                liveEventId = "";
+                void purgeLiveEventCache(oldEventId);
+            } else {
+                // Losing the operator is not Next Competitor. Keep recorded
+                // media cached, but stop requesting the abandoned event.
+                stopLivePrefetch();
+            }
+            resetJudgingReview();
+            video.playbackRate = 1;
+            const hadLiveSource = assignedVideoSource.includes("/live/");
+            const sourceChanged = attachLiveHls(livePreviewUrl(), true);
+            appliedState = state;
+            if (video.readyState >= 2) hideEmpty();
+            else if (sourceChanged) {
+                if (hadLiveSource) hideEmpty();
+                else setEmpty("waitingForVideo");
+            }
+            return;
+        }
+
+        if (state.mode === "recording" || state.mode === "preparing") {
+            resetJudgingReview();
+            video.playbackRate = 1;
+            const hadLiveSource = assignedVideoSource.includes("/live/");
+            const recording = state.mode === "recording";
+            const followedRecordStart = assignedVideoSource.includes("/live/preview/") &&
+                (previousState?.mode === "ready" || previousState?.mode === "preparing");
+            const sourceChanged = attachLiveHls(recording ? liveEventUrl(eventId) : livePreviewUrl(),
+                true, recording && followedRecordStart ? 0 : -1);
+            if (recording) currentVideoId = eventId;
+            appliedState = state;
+            if (video.readyState >= 2) hideEmpty();
+            else if (sourceChanged) {
+                if (hadLiveSource) hideEmpty();
+                else setEmpty("waitingForVideo");
+            }
+            return;
+        }
+
+        const source = liveEventUrl(eventId);
+        const sourceChanged = attachLiveHls(source, false);
+        currentVideoId = eventId;
+        if (sourceChanged || video.readyState < 1) {
+            await waitForVideoMetadata(sequence);
+            if (sequence !== stateApplySequence) return;
+        }
+        if (isJudgingReview(state)) {
+            await enterJudgingReview(state, sequence, sourceChanged);
+            return;
+        }
+        resetJudgingReview();
+        if (state.mode === "reverse-unavailable") {
+            video.pause();
+            setEmpty("reverseUnavailable");
+            appliedState = state;
+            return;
+        }
+        hideEmpty();
+        video.playbackRate = Math.max(0.05, Math.min(4, Number(state.playbackRate || 1)));
+        const discontinuityChanged = Number(state.playbackDiscontinuity || 0) !==
+            Number(previousState?.playbackDiscontinuity || 0);
+        const transportChanged = sourceChanged || discontinuityChanged ||
+            !!state.isPlaying !== !!previousState?.isPlaying || state.mode !== previousState?.mode || !state.isPlaying;
+        if (transportChanged) {
+            video.pause();
+            await seekExactly(hostedPosition(state), sequence);
+            if (sequence !== stateApplySequence) return;
+        }
+        appliedState = state;
+        if (state.isPlaying) {
+            if (!await playWithAutoplayFallback()) setStatus("adjustVolume");
+            else setStatusText(statusWithAutoplayNotice(playbackStatusText(state, true)));
+        } else {
+            video.pause();
+            setStatusText(playbackStatusText(state, false));
+        }
+        drawTimeline();
     }
 
     async function toggleJudgingPlayback() {
@@ -891,17 +1794,116 @@
     async function applyState(state) {
         const sequence = ++stateApplySequence;
         const previousState = appliedState;
+        const previousCommunicationStatus = latestState?.communicationStatus;
+        const liveRink = rinkMode === "Live" || String(state?.sourceType || "").toLowerCase() === "live";
+        const activeLiveRecording = liveRink && ["preparing", "recording"].includes(state?.mode);
+        if (liveRink && !activeLiveRecording && (state?.operatorConnected !== true || isOperatorOfflineState(state))) {
+            // A persisted replay belongs to the previous operator session.
+            // Until a VRO takes control, display the incoming live preview,
+            // with no old replay controls, clip timeline, or zoom applied.
+            state = {
+                ...state, sourceType: "Live", mode: "operator-offline",
+                videoId: "", videoFileName: "", isPlaying: false, playbackEnabled: false,
+                positionSeconds: 0, timelinePositionSeconds: 0, timelineDurationSeconds: 0,
+                reviewStartedAtUnixMs: 0, programStartSeconds: null, halfwaySeconds: null,
+                openClipStartSeconds: null, clips: [], zoomScale: 1, zoomOffsetX: 0, zoomOffsetY: 0
+            };
+        }
+        const newlyActiveIndicators = latestState
+            ? Object.entries(communicationIndicators)
+                .filter(([, indicator]) => previousCommunicationStatus?.[indicator.property] === false &&
+                    state.communicationStatus?.[indicator.property] === true)
+                .map(([name]) => name)
+            : [];
+        const newlyInactiveIndicators = latestState
+            ? panelReadyIndicators.filter(name => {
+                const property = communicationIndicators[name].property;
+                return previousCommunicationStatus?.[property] === true && state.communicationStatus?.[property] === false;
+            })
+            : [];
+        const communicationAlertEvents = [
+            ...newlyActiveIndicators.map(indicator => ({ indicator, active: true })),
+            ...newlyInactiveIndicators.map(indicator => ({ indicator, active: false }))
+        ];
+        if (latestState && previousCommunicationStatus?.competitorScored === true &&
+            state.communicationStatus?.competitorScored === false) {
+            communicationAlertEvents.push({ indicator: "competitor-scored", active: false });
+        }
+        for (const name of panelReadyIndicators) {
+            const property = communicationIndicators[name].property;
+            if (state.communicationStatus?.[property] !== true) {
+                const previousIndex = readyIndicatorOrder.indexOf(name);
+                if (previousIndex !== -1) readyIndicatorOrder.splice(previousIndex, 1);
+            }
+        }
+        if (latestState === null) {
+            for (const name of panelReadyIndicators) {
+                if (state.communicationStatus?.[communicationIndicators[name].property] === true) readyIndicatorOrder.push(name);
+            }
+        } else {
+            for (const name of newlyActiveIndicators) {
+                if (panelReadyIndicators.includes(name) && !readyIndicatorOrder.includes(name)) readyIndicatorOrder.push(name);
+            }
+        }
         latestState = state;
+        renderCommunicationStatus(state);
+        if (communicationAlertEvents.length) showCommunicationAlert(communicationAlertEvents);
+        updateVroConnectionStatus();
+        updateTestPatternLabel(state);
+        updatePlaybackStatusVisibility();
         syncVideoAudio();
         updateJudgingControls();
         const videoId = String(state?.videoId || "");
-        videoFileName.textContent = String(state?.videoFileName || "");
+        const operatorOnline = state?.operatorConnected === true && !isOperatorOfflineState(state);
+        videoFileName.textContent = !liveRink && operatorOnline && videoId
+            ? String(state?.videoFileName || "")
+            : "";
         applyZoomState(state);
         updateReviewIndicator(state);
         drawTimeline();
 
+        if (liveRink) {
+            rinkMode = "Live";
+            await applyLiveState(state, previousState, sequence);
+            return;
+        }
+
+        if (!operatorOnline) {
+            video.pause();
+            if (video.hasAttribute("src")) {
+                video.removeAttribute("src");
+                video.load();
+                currentVideoId = "";
+                currentVideoSource = "";
+                assignedVideoSource = "";
+                resetTransferRate();
+            }
+            video.classList.add("preloading");
+            resetJudgingReview();
+            appliedState = state;
+            setEmpty("operatorOffline");
+            updateReviewIndicator(null);
+            clearStatus();
+            return;
+        }
+
+        if (isStandbyAfterStop(state)) {
+            showStandbyAfterStop(state);
+            return;
+        }
+
         if (!videoId) {
             video.pause();
+            if (currentVideoSource) {
+                const sourceToPurge = currentVideoSource;
+                video.removeAttribute("src");
+                video.load();
+                currentVideoId = "";
+                currentVideoSource = "";
+                assignedVideoSource = "";
+                resetTransferRate();
+                purgeBrowserVideoCache(sourceToPurge).catch(() => { });
+            }
             video.classList.add("preloading");
             resetJudgingReview();
             appliedState = state;
@@ -910,46 +1912,82 @@
             return;
         }
 
-        if (state.mode === "operator-offline") {
+        // A newly installed worker must control this page before media requests
+        // begin, otherwise Chrome can bypass the chunk cache on first join.
+        const cacheReady = await videoCacheReady;
+        if (sequence !== stateApplySequence) return;
+        if (!cacheReady) {
             video.pause();
-            video.classList.add("preloading");
-            resetJudgingReview();
-            appliedState = state;
-            setEmpty("operatorOffline");
-            setStatus("operatorOffline");
+            if (video.hasAttribute("src")) {
+                video.removeAttribute("src");
+                video.load();
+            }
+            setEmpty("waitingForVideo");
+            setStatus("cacheUnavailable");
             return;
         }
 
-        const networkSource = apiUrl(`sessions/${encodeURIComponent(sessionCode)}/videos/${encodeURIComponent(videoId)}/content`);
+        const networkSource = videoContentUrl(videoId);
 
         if (state?.playbackEnabled !== true) {
             video.pause();
             video.classList.add("preloading");
             resetJudgingReview();
-            if (videoId !== currentVideoId || currentVideoSource !== networkSource) {
+            const preparing = state.mode === "preparing";
+            // Safari can spend several seconds reloading MP4 metadata. Select
+            // the eager policy before the first load and retain that resource
+            // across ready -> preparing -> recording.
+            video.preload = "auto";
+            const sourceChanged = videoId !== currentVideoId || currentVideoSource !== networkSource;
+            if (sourceChanged) {
+                const sourceToPurge = currentVideoSource;
                 currentVideoId = videoId;
                 currentVideoSource = networkSource;
+                assignedVideoSource = networkSource;
+                resetTransferRate();
                 video.src = networkSource;
                 video.load();
+                if (sourceToPurge && sourceToPurge !== networkSource)
+                    purgeBrowserVideoCache(sourceToPurge).catch(() => { });
+                cachedVideoSize(networkSource).catch(() => { });
             }
+            if (preparing && video.readyState >= 1) {
+                const target = normalizeToDuration(hostedPosition(state));
+                if (Math.abs(Number(video.currentTime || 0) - target) > 0.05) {
+                    try { video.currentTime = target; } catch { }
+                }
+            }
+            reportVideoBuffer();
             appliedState = state;
             setEmpty("waitingForVideo");
             setStatus("preparingVideo", { code: sessionCode });
             return;
         }
 
+        // Stop recording leaves completed chunks in place for replay.
         video.classList.remove("preloading");
 
-        const videoChanged = videoId !== currentVideoId || networkSource !== currentVideoSource;
+        const videoChanged = videoId !== currentVideoId || networkSource !== currentVideoSource || assignedVideoSource !== networkSource;
         if (videoChanged) {
             video.pause();
+            const sourceToPurge = currentVideoSource;
             currentVideoId = videoId;
             currentVideoSource = networkSource;
+            resetTransferRate();
             video.src = networkSource;
+            assignedVideoSource = networkSource;
             video.load();
+            if (sourceToPurge && sourceToPurge !== networkSource)
+                purgeBrowserVideoCache(sourceToPurge).catch(() => { });
+            cachedVideoSize(networkSource).catch(() => { });
             await waitForVideoMetadata(sequence);
             if (sequence !== stateApplySequence) return;
         }
+        if (video.readyState < 1) {
+            await waitForVideoMetadata(sequence);
+            if (sequence !== stateApplySequence) return;
+        }
+        reportVideoBuffer();
 
         if (isJudgingReview(state)) {
             await enterJudgingReview(state, sequence, videoChanged);
@@ -979,23 +2017,30 @@
         // performed at an operator-visible transport boundary.
         const alignTransportBoundary = videoChanged || discontinuityChanged || resumed || modeChanged || !state.isPlaying;
 
+        let seekPromise = Promise.resolve(true);
         if (alignTransportBoundary) {
             video.pause();
-            await seekExactly(target, sequence);
-            if (sequence !== stateApplySequence) return;
-            drawTimeline();
+            seekPromise = seekExactly(target, sequence);
         }
 
         appliedState = state;
         if (state.isPlaying) {
             try {
-                if (!await playWithAutoplayFallback()) throw new Error("Playback was blocked.");
+                // Start the browser's play request while its seek is pending;
+                // waiting for seeked first serialized two startup delays.
+                const [, started] = await Promise.all([seekPromise, playWithAutoplayFallback()]);
+                if (sequence !== stateApplySequence) return;
+                if (!started) throw new Error("Playback was blocked.");
+                drawTimeline();
                 setStatusText(statusWithAutoplayNotice(playbackStatusText(state, true)));
             } catch {
                 setStatus("adjustVolume", { code: sessionCode });
             }
         } else {
+            await seekPromise;
+            if (sequence !== stateApplySequence) return;
             video.pause();
+            drawTimeline();
             setStatusText(playbackStatusText(state, false));
         }
     }
@@ -1009,17 +2054,37 @@
         }
 
         const attempt = ++connectionAttempt;
+        const previousSessionCode = sessionCode;
+        const preserveLivePlayback = previousSessionCode === code && rinkMode === "Live" &&
+            assignedVideoSource.includes("/live/");
+        const sourceToPurge = previousSessionCode && previousSessionCode !== code
+            ? currentVideoSource : "";
         closeConnection();
-        video.pause();
+        if (!preserveLivePlayback) {
+            clearLiveFrame();
+            if (previousSessionCode !== code && liveEventId) void purgeLiveEventCache(liveEventId);
+            stopLivePrefetch();
+            liveHls?.destroy();
+            liveHls = null;
+            liveEventId = "";
+            rinkMode = "Recorded";
+            video.pause();
+            if (sourceToPurge) {
+                video.removeAttribute("src");
+                video.load();
+                if (!sourceToPurge.includes("/live/")) purgeBrowserVideoCache(sourceToPurge).catch(() => { });
+            }
+            currentVideoId = "";
+            currentVideoSource = "";
+            assignedVideoSource = "";
+            latestState = null;
+            appliedState = null;
+            stateApplySequence++;
+            resetJudgingReview();
+            updateReviewIndicator(null);
+            setEmpty("connectingEmpty");
+        }
         sessionCode = code;
-        currentVideoId = "";
-        currentVideoSource = "";
-        latestState = null;
-        appliedState = null;
-        stateApplySequence++;
-        resetJudgingReview();
-        updateReviewIndicator(null);
-        setEmpty("connectingEmpty");
         setStatus("connecting", { code });
         history.replaceState(null, "", `?session=${encodeURIComponent(code)}`);
 
@@ -1039,31 +2104,33 @@
                 return;
             }
             clearRinkIdDelay();
+            const payload = await validation.json();
+            rinkMode = payload?.mode === "Live" ? "Live" : "Recorded";
         } catch {
             if (attempt !== connectionAttempt) return;
             setStatus("serverNotReached");
             return;
         }
 
-        eventSource = new EventSource(apiUrl(`sessions/${encodeURIComponent(code)}/events`));
-        eventSource.addEventListener("playback", event => {
-            if (attempt !== connectionAttempt) return;
-            try {
-                applyState(JSON.parse(event.data)).catch(() => { });
-            } catch {
-                setStatus("playbackUnreadable");
-            }
-        });
-        eventSource.onopen = () => {
-            if (attempt === connectionAttempt) setStatus("connectedWaitingVro", { code });
-        };
-        eventSource.onerror = () => {
-            if (attempt !== connectionAttempt) return;
-            closeConnection();
-            setStatus("connectionInterrupted", { code });
-            reconnectTimer = setTimeout(() => connect(code), 2000);
-        };
+        openPlaybackEventStream(code, attempt);
     }
+
+    refreshButton.addEventListener("click", () => {
+        const rinkId = normalizeCode(sessionCodeInput.value);
+        if (rinkId.length === 6) sessionStorage.setItem(REFRESH_RINK_ID_KEY, rinkId);
+        else sessionStorage.removeItem(REFRESH_RINK_ID_KEY);
+        window.location.reload();
+    });
+
+    video.addEventListener("playing", () => {
+        clearLiveFrame();
+        if (liveErrorTimer !== null) {
+            clearTimeout(liveErrorTimer);
+            liveErrorTimer = null;
+        }
+        if (rinkMode === "Live" && latestState?.mode !== "replay" &&
+            assignedVideoSource.includes("/live/")) hideEmpty();
+    });
 
     controls.addEventListener("submit", event => {
         event.preventDefault();
@@ -1077,9 +2144,7 @@
     });
 
     function updatePanelTypeLabel() {
-        panelTypeLabel.textContent = t(
-            panelType === "referee" ? "referee" : panelType === "judging" ? "judge" : "technicalPanel"
-        );
+        panelTypeLabel.textContent = t(panelTypeLabelKeys[panelType] || "technicalController");
     }
 
     function sortPanelTypeMenu() {
@@ -1105,18 +2170,22 @@
     }
 
     panelTypeInput.addEventListener("change", () => {
-        panelType = panelTypeInput.value === "referee"
-            ? "referee"
-            : panelTypeInput.value === "judging"
-                ? "judging"
-                : "technical";
+        panelType = panelTypeLabelKeys[panelTypeInput.value] ? panelTypeInput.value : defaultPanelType;
+        viewerSessionId = "";
+        renderCommunicationStatus();
         sessionStorage.setItem(PANEL_SESSION_KEY, panelType);
         updatePanelTypeLabel();
         panelTypeMenu.querySelectorAll("[data-panel-type]").forEach(option => {
             option.setAttribute("aria-selected", option.dataset.panelType === panelType ? "true" : "false");
         });
+        applyZoomState(latestState);
         resetJudgingReview();
         if (latestState) applyState(latestState).catch(() => { });
+        if (eventSource && sessionCode) {
+            eventSource.close();
+            eventSource = null;
+            openPlaybackEventStream(sessionCode, connectionAttempt);
+        }
     });
 
     function closePanelTypeMenu() {
@@ -1186,6 +2255,33 @@
         updateJudgingControls();
         drawTimeline();
     });
+
+    window.addEventListener("wheel", event => {
+        if (panelType !== "referee" || !judgingReviewActive || !isJudgingReview() ||
+            video.readyState < 1 ||
+            String(latestState?.mode || "").toLowerCase() !== "replay" ||
+            event.ctrlKey || !Number.isFinite(event.deltaY) || event.deltaY === 0 ||
+            (event.target instanceof Element &&
+                event.target.closest("input, select, textarea, button, [contenteditable]"))) return;
+
+        event.preventDefault();
+        if (judgingIsPlaying) {
+            judgingIsPlaying = false;
+            updateJudgingControls();
+        }
+        judgingLastVideoTime = Number.NaN;
+        video.pause();
+
+        const fps = Math.max(1, Math.min(240, Number(latestState?.framesPerSecond) || 30));
+        const sourceTime = judgingSourceStartSeconds + judgingPositionSeconds;
+        const currentFrame = Math.floor(sourceTime * fps + 1e-6);
+        // Match VRO: wheel up advances, wheel down rewinds one frame.
+        const nextFrame = currentFrame + (event.deltaY < 0 ? 1 : -1);
+        const nextPosition = nextFrame / fps - judgingSourceStartSeconds;
+        seekJudgingPosition(nextPosition).catch(() => { });
+        drawTimeline();
+        setStatusText(judgingStatusText());
+    }, { passive: false });
 
     function seekJudgingFromPointer(event) {
         if (!judgingReviewActive || !isJudgingReview()) return;
@@ -1261,7 +2357,7 @@
 
         if (judgingReviewActive && isJudgingReview()) {
             if (judgingIsPlaying && video.paused) video.play().catch(() => { });
-        } else if (latestState?.isPlaying) {
+        } else if (latestState?.isPlaying && video.paused) {
             applyState(latestState).catch(() => { });
         } else if (currentVideoId && video.volume > 0 && !video.muted) {
             // A user gesture is required by major browsers before later
@@ -1272,15 +2368,41 @@
                 .then(() => {
                     video.pause();
                     if (Number.isFinite(target)) video.currentTime = target;
-                    setStatus("soundEnabled", { code: sessionCode });
                 })
                 .catch(() => { });
         }
     }
 
     video.addEventListener("loadedmetadata", () => {
+        reportVideoBuffer();
         if (latestState) applyState(latestState).catch(() => { });
         drawTimeline();
+    });
+    video.addEventListener("seeked", () => {
+        reportVideoBuffer();
+        if (rinkMode === "Live" && latestState?.mode === "replay" && video.readyState >= 2)
+            clearLiveFrame();
+    });
+    video.addEventListener("loadstart", () => {
+        if (!isStandbyAfterStop(latestState)) resetTransferRate();
+    });
+    video.addEventListener("error", () => {
+        if (!currentVideoSource) return;
+        if (rinkMode === "Live" && isRecordingState(latestState) &&
+            assignedVideoSource.includes("/live/")) {
+            // HLS can recover a short media error without losing the live
+            // session. Do not flash the test pattern on every transient retry.
+            if (liveErrorTimer !== null) clearTimeout(liveErrorTimer);
+            liveErrorTimer = setTimeout(() => {
+                liveErrorTimer = null;
+                if (rinkMode === "Live" && isRecordingState(latestState) && video.readyState < 2)
+                    setEmpty("waitingForVideo");
+            }, 8000);
+            return;
+        }
+        video.pause();
+        setEmpty("waitingForVideo");
+        setStatus("cacheUnavailable");
     });
     video.addEventListener("contextmenu", event => event.preventDefault());
 
@@ -1291,7 +2413,7 @@
     languageSelect.value = language;
     updateStaticTranslations();
     const savedPanelType = sessionStorage.getItem(PANEL_SESSION_KEY);
-    panelType = savedPanelType === "referee" ? "referee" : savedPanelType === "judging" ? "judging" : "technical";
+    panelType = panelTypeLabelKeys[savedPanelType] ? savedPanelType : defaultPanelType;
     panelTypeInput.value = panelType;
     panelTypeInput.dispatchEvent(new Event("change"));
     updateJudgingControls();
@@ -1384,11 +2506,23 @@
     document.addEventListener("visibilitychange", resumeExpectedPlayback);
 
     probeServerConnectivity().catch(() => { });
+    updateTransferRate().catch(() => { });
     window.setInterval(() => {
         probeServerConnectivity().catch(() => { });
     }, CONNECTIVITY_INTERVAL_MS);
+    window.setInterval(() => {
+        updateTransferRate().catch(() => { });
+    }, TRANSFER_SAMPLE_INTERVAL_MS);
+    window.setInterval(updateVroConnectionStatus, VRO_CONNECTION_INTERVAL_MS);
+    window.setInterval(() => {
+        cachedVideoSize(currentVideoSource).catch(() => { });
+    }, VIDEO_CACHE_SAMPLE_INTERVAL_MS);
+    window.setInterval(reportVideoBuffer, 100);
 
-    const initialCode = normalizeCode(new URLSearchParams(location.search).get("session"));
+    const initialCode = normalizeCode(
+        sessionStorage.getItem(REFRESH_RINK_ID_KEY) || new URLSearchParams(location.search).get("session")
+    );
+    sessionStorage.removeItem(REFRESH_RINK_ID_KEY);
     if (initialCode.length === 6) {
         sessionCodeInput.value = initialCode;
         connect(initialCode);

@@ -1,39 +1,82 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ReVue-Remote Management</title><link rel="stylesheet" href="/config.css?v=20260929-3"></head>
+<title>ReVue-Remote Management</title><link rel="stylesheet" href="/config.css?v=20261004-encoder-settings"></head>
 <body><main class="page">
   <section id="loginView" class="card authCard"><h1>ReVue-Remote</h1><h2>Sign in</h2>
     <form id="loginForm"><label>Email<input id="loginEmail" type="email" required autocomplete="username"></label>
       <label>Password<input id="loginPassword" type="password" required autocomplete="current-password"></label>
       <button type="submit">Sign in</button><p id="loginMessage" class="message"></p></form></section>
 
-  <section id="appView" class="hidden">
-    <header><div><h1>ReVue-Remote</h1><p id="signedInAs"></p></div><nav>
-      <button data-view="videos">Videos</button><button data-view="keys">Rink IDs</button><button data-view="profile">My account</button>
-      <button id="usersTab" data-view="users">Users</button><button id="logoutBtn" class="secondary">Sign out</button></nav></header>
+  <section id="appView" class="appShell hidden">
+    <aside class="sidebar">
+      <div class="brand"><span>ReVue<span class="brandLight">Remote</span></span></div>
+      <nav aria-label="Management">
+        <button data-view="videos" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="1"/><path d="M7 4v16M17 4v16M3 9h4m-4 6h4m10-6h4m-4 6h4"/></svg>Videos</button>
+        <button data-view="keys"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h6l2 2h10v11H3z"/></svg>Rink IDs</button>
+        <button data-view="profile"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c.6-4 3-6 7-6s6.4 2 7 6"/></svg>My account</button>
+        <button id="usersTab" data-view="users"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M2.5 20c.5-3.5 2.7-5.5 6.5-5.5s6 2 6.5 5.5M16 5.5c2 0 3.5 1.4 3.5 3.5S18 12.5 16 12.5M18 15c2.2.5 3.5 2 3.5 5"/></svg>Users</button>
+      </nav>
+      <div class="sidebarFooter"><span class="sidebarLabel">SIGNED IN AS</span><p id="signedInAs"></p><button id="logoutBtn" class="sidebarSignOut">Sign out</button></div>
+    </aside>
 
-    <section id="videosView" class="panel"><div class="panelHeading"><h2>Video Library</h2><button id="deleteAllVideos" class="danger">Delete All</button></div>
-      <div class="toolbar"><label>Rink ID<select id="videoKey"></select></label>
-        <label class="filePicker">Choose videos<input id="videoFiles" type="file" accept=".mp4,.m4v,.mov,.mkv,.ts,.m2ts,video/mp4,video/quicktime,video/x-matroska,video/mp2t" multiple></label>
-        <button id="uploadBtn">Upload</button></div>
-      <div id="uploadProgressList" class="uploadProgressList"></div>
-      <p class="muted reorderHelp">Drag videos to change the order shown in ReVue VRO.</p>
-      <div id="videoList" class="list"></div></section>
+    <div class="mainContent">
+      <header class="pageHeader"><span class="eyebrow">REVUE REMOTE</span><h1 id="pageTitle">Videos</h1><p id="pageDescription">Upload and manage videos for your Rink IDs.</p></header>
 
-    <section id="keysView" class="panel hidden"><h2 id="keyListHeading">My Rink IDs</h2>
-      <form id="keyForm" class="toolbar"><label>New Rink ID<input id="newKey" maxlength="6" pattern="[A-Za-z0-9]{6}" placeholder="AB1234" required></label><button>Create Rink ID</button></form>
-      <div id="keyList" class="list"></div></section>
+      <section id="videosView" class="panel"><div class="panelHeading"><div><h2>Video Library</h2><p>Choose a Rink ID, then add videos to its library.</p></div>
+        <div class="panelHeadingTools">
+          <div id="storageStatus" class="storageStatus">
+            <div class="storageHeading"><span>Server storage</span><strong id="storagePercent">Checking…</strong></div>
+            <progress id="storageUsed" max="100" aria-label="Server upload capacity used"></progress>
+            <div id="storageDetails" class="storageDetails">Checking available space…</div>
+          </div>
+        </div>
+      </div>
+        <div class="uploadToolbar">
+          <label class="rinkSelector">Rink ID<select id="videoKey"></select></label>
+          <label class="filePicker"><span aria-hidden="true">＋</span>Add videos<input id="videoFiles" type="file" accept=".mp4,.m4v,.mov,.mkv,.ts,.m2ts,video/mp4,video/quicktime,video/x-matroska,video/mp2t" multiple></label>
+          <span id="selectedFilesLabel" class="selectedFiles">No files selected</span>
+          <button id="uploadBtn" type="button">Upload selected</button>
+          <button id="deleteAllVideos" class="danger" type="button">Delete All</button>
+        </div>
+        <div id="uploadProgressList" class="uploadProgressList"></div>
+        <div class="libraryHeading"><h3>Files</h3><p class="muted reorderHelp">Drag videos to change the order shown in ReVue VRO.</p></div>
+        <div id="videoList" class="list"></div></section>
 
-    <section id="profileView" class="panel hidden"><h2>My account</h2>
-      <form id="profileForm" class="formGrid"><label>Email<input id="profileEmail" type="email" required></label><label>First name<input id="profileFirst"></label><label>Last name<input id="profileLast"></label><button>Save profile</button></form>
-      <h3>Change password</h3><form id="passwordForm" class="formGrid"><label>Current password<input id="currentPassword" type="password" required></label><label>New password<input id="newPassword" type="password" minlength="8" required></label><label>Confirm new password<input id="confirmPassword" type="password" minlength="8" required></label><button>Change password</button></form></section>
+      <section id="keysView" class="panel hidden"><h2 id="keyListHeading">My Rink IDs</h2>
+        <form id="keyForm" class="toolbar"><label>New Rink ID<input id="newKey" maxlength="6" pattern="[A-Za-z0-9]{6}" placeholder="AB1234" required></label><label>Type<select id="newKeyMode" required><option value="" selected disabled>Choose a type</option><option value="Recorded">Recorded video playback</option><option value="Live">Live stream (RTMP)</option></select></label><label id="newKeyPasswordRow" class="hidden">RTMP publish password<input id="newKeyPassword" type="password" maxlength="256" autocomplete="new-password" placeholder="Required for Live Rink IDs"></label><button>Create Rink ID</button><p class="muted keyTypeHint">The Rink ID type cannot be changed after creation.</p></form>
+        <section id="liveStatusPanel" class="liveStatusPanel hidden" aria-labelledby="liveStatusTitle"><div class="liveStatusHeading"><div><h3 id="liveStatusTitle">Live streams</h3><p id="liveStatusSummary">Checking stream status…</p></div><span id="liveStatusUpdated" class="muted"></span></div><div id="liveStatusList" class="liveStatusList"></div></section>
+        <div id="keyList" class="list"></div></section>
 
-    <section id="usersView" class="panel hidden"><h2>User management</h2>
-      <form id="createUserForm" class="formGrid"><label>Email<input id="userEmail" type="email" required></label><label>First name<input id="userFirst"></label><label>Last name<input id="userLast"></label><label>Type<select id="userRole"><option>Regular</option><option>Admin</option></select></label><label>Temporary password<input id="userPassword" type="password" minlength="8" required></label><button>Create user</button></form>
-      <div id="userList" class="list"></div></section>
-    <p id="appMessage" class="message"></p>
+      <section id="profileView" class="panel hidden"><h2>My account</h2>
+        <form id="profileForm" class="formGrid"><label>Email<input id="profileEmail" type="email" required></label><label>First name<input id="profileFirst"></label><label>Last name<input id="profileLast"></label><button>Save profile</button></form>
+        <h3>Change password</h3><form id="passwordForm" class="formGrid"><label>Current password<input id="currentPassword" type="password" required></label><label>New password<input id="newPassword" type="password" minlength="8" required></label><label>Confirm new password<input id="confirmPassword" type="password" minlength="8" required></label><button>Change password</button></form></section>
+
+      <section id="usersView" class="panel hidden"><h2>User management</h2>
+        <form id="createUserForm" class="formGrid"><label>Email<input id="userEmail" type="email" required></label><label>First name<input id="userFirst"></label><label>Last name<input id="userLast"></label><label>Type<select id="userRole"><option>Regular</option><option>Admin</option></select></label><label>Temporary password<input id="userPassword" type="password" minlength="8" required></label><button>Create user</button></form>
+        <div id="userList" class="list"></div></section>
+      <p id="appMessage" class="message"></p>
+    </div>
   </section>
 </main>
 <dialog id="forcePassword"><form id="forcePasswordForm" method="dialog"><h2>Change your temporary password</h2><p>You must choose a new password before continuing.</p><label>Current password<input id="forceCurrent" type="password" required></label><label>New password<input id="forceNew" type="password" minlength="8" required></label><label>Confirm new password<input id="forceConfirm" type="password" minlength="8" required></label><button>Change password</button><p id="forceMessage" class="message"></p></form></dialog>
+<dialog id="renameKeyDialog"><form id="renameKeyForm"><h2>Rename Rink ID</h2><label>New Rink ID<input id="renameKeyCode" maxlength="6" pattern="[A-Za-z0-9]{6}" autocomplete="off" required></label><p class="muted">The videos folder will move to the new Rink ID. Reconnect any viewers or VRO using the old ID.</p><div class="dialogActions"><button id="cancelRenameKey" type="button" class="secondary">Cancel</button><button type="submit">Rename</button></div><p id="renameKeyMessage" class="message"></p></form></dialog>
+<dialog id="keyMediaDialog"><form id="keyMediaForm"><h2 id="keyMediaTitle">Stream settings</h2>
+  <div class="publishUrlField"><span class="publishUrlLabel">Publish URL</span><div class="publishUrlRow"><code id="keyRtmpUrl"></code><button id="copyKeyRtmpUrl" type="button" class="copyUrlButton secondary" aria-label="Copy publish URL" title="Copy publish URL"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg></button></div><span id="keyCopyFeedback" class="publishUrlFeedback muted" role="status" aria-live="polite"></span></div>
+  <label>RTMP publish password<span class="passwordInputRow"><input id="keyPublishPassword" type="password" maxlength="256" autocomplete="new-password"><button id="toggleKeyPublishPassword" type="button" class="passwordVisibilityButton secondary" aria-label="Show password" title="Show password"><svg class="passwordVisibleIcon" viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.6"/></svg><svg class="passwordHiddenIcon hidden" viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.6"/><path d="m4 4 16 16"/></svg></button></span></label>
+  <p id="keyMediaPasswordHint" class="muted"></p>
+  <button id="removeKeyPublishPassword" type="button" class="danger small removePublishPassword hidden">Remove password</button>
+  <p class="muted">For a password protected stream, append <code>?user=publisher&amp;pass=YOUR_PASSWORD</code> to the publish URL. Live Rink IDs are omitted from the Videos manager.</p>
+  <div class="dialogActions"><button id="cancelKeyMedia" type="button" class="secondary">Cancel</button><button type="submit">Save</button></div><p id="keyMediaMessage" class="message"></p></form></dialog>
 <dialog id="renameVideoDialog"><form id="renameVideoForm"><h2>Rename video</h2><label>Video name<input id="renameVideoName" maxlength="180" required></label><div class="dialogActions"><button id="cancelRenameVideo" type="button" class="secondary">Cancel</button><button type="submit">Rename</button></div><p id="renameVideoMessage" class="message"></p></form></dialog>
-<script src="/config.js?v=20260929-3"></script></body></html>
+<dialog id="conversionDialog" aria-labelledby="conversionDialogTitle"><h2 id="conversionDialogTitle"></h2>
+  <p id="conversionDialogDescription"></p>
+  <div class="dialogActions"><button id="cancelConversion" type="button" class="secondary">Cancel</button><button id="confirmConversion" type="button">Convert</button></div></dialog>
+<dialog id="previewDialog" class="previewDialog" aria-labelledby="previewTitle">
+  <h2 id="previewTitle"></h2>
+  <video id="previewVideo" controls playsinline preload="metadata"></video>
+  <div class="dialogActions"><button id="closePreview" type="button" class="secondary">Close</button></div></dialog>
+<dialog id="livePreviewDialog" class="previewDialog" aria-labelledby="livePreviewTitle"><h2 id="livePreviewTitle"></h2><video id="livePreviewVideo" controls playsinline></video><p id="livePreviewMessage" class="muted">The preview follows the live feed with a short delay.</p><div class="dialogActions"><button id="closeLivePreview" type="button" class="secondary">Close</button></div></dialog>
+<dialog id="encoderSettingsDialog" class="encoderSettingsDialog" aria-labelledby="encoderSettingsTitle"><h2 id="encoderSettingsTitle">Encoder settings</h2><p class="muted">Use these settings for Live Rink ID <strong id="encoderSettingsRinkId"></strong>.</p>
+  <dl class="encoderSettingsList"><dt>Protocol</dt><dd>RTMP</dd><dt>Resolution</dt><dd>1280 × 720 progressive</dd><dt>Frame rate</dt><dd>59.94 fps, constant (60000/1001)</dd><dt>Video codec</dt><dd>H.264 / AVC</dd><dt>Pixel format</dt><dd>8-bit 4:2:0 (yuv420p)</dd><dt>Rate control</dt><dd>CBR</dd><dt>Video bitrate</dt><dd>6000 kbps recommended</dd><dt>Keyframes</dt><dd>Every 1 second (GOP 60)</dd><dt>B-frames</dt><dd>0</dd><dt>Audio</dt><dd>AAC-LC · 48 kHz · stereo · 128 kbps</dd></dl>
+  <p class="muted encoderSettingsNote">Do not use H.265/HEVC, variable frame rate, interlaced video, or B-frames.</p><div class="dialogActions"><button id="copyEncoderSettings" type="button" class="copySettingsButton" aria-label="Copy encoder settings"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg><span id="copyEncoderSettingsLabel">Copy settings</span></button><button id="closeEncoderSettings" type="button" class="secondary">Close</button></div></dialog>
+<script src="/hls.min.js?v=1.6.13"></script><script src="/config.js?v=20261004-encoder-settings"></script></body></html>

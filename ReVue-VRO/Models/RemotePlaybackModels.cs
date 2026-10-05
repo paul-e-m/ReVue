@@ -58,6 +58,7 @@ public sealed class UploadedLocalVideoResult
 
 public sealed class RemotePlaybackCommand
 {
+    public string SourceType { get; set; } = "Recorded";
     public string OperatorInstanceId { get; set; } = "";
     public long OperatorGeneration { get; set; }
     public long OperatorSequence { get; set; }
@@ -65,6 +66,8 @@ public sealed class RemotePlaybackCommand
     public double PositionSeconds { get; set; }
     public double TimelinePositionSeconds { get; set; }
     public double TimelineDurationSeconds { get; set; }
+    public double? FramesPerSecond { get; set; }
+    public int? LiveDelaySeconds { get; set; }
     public bool IsPlaying { get; set; }
     public double PlaybackRate { get; set; } = 1;
     public long PlaybackDiscontinuity { get; set; }
