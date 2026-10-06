@@ -735,7 +735,7 @@ public sealed partial class RemotePlaybackManager : IDisposable
     {
         _ = BuildUri(hostUrl, "api/health");
         if (!IsValidSessionCode(sessionCode))
-            throw new InvalidOperationException("Rink ID must contain exactly six letters or digits, for example AB1234.");
+            throw new InvalidOperationException("Rink ID must contain exactly six letters or digits.");
     }
 
     private static async Task EnsureSuccessAsync(HttpResponseMessage response, CancellationToken cancellationToken)

@@ -62,31 +62,46 @@ input:focus-visible, select:focus-visible, button:focus-visible, .filePicker:foc
 .toolbar { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; margin-top: 21px; }
 #keyForm label { width: min(220px, 100%); }
 #keyForm .keyTypeHint { flex-basis: 100%; margin: 0; }
-.liveStatusPanel { margin-top: 26px; padding: 20px; border: 1px solid var(--line); background: #f9fbfb; }
 .liveStatusHeading { display: flex; justify-content: space-between; align-items: baseline; gap: 14px; margin-bottom: 14px; }
-.liveStatusHeading h3 { margin: 0; font-size: 15px; }
+.liveStatusHeading h2 { margin: 0; }
 .liveStatusHeading p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
-.liveStatusList { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 270px), 1fr)); gap: 10px; }
-.liveStreamCard { display: grid; align-content: start; gap: 9px; min-width: 0; padding: 13px; border: 1px solid var(--line); background: #fff; }
-.liveStreamCardHeader { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
-.liveStreamCardHeader strong { font-size: 17px; letter-spacing: .03em; }
-.liveFeedToggle { min-height: 27px; padding: 3px 9px; border-radius: 999px; font-size: 11px; }
-.liveFeedToggle.active { border-color: #83b49a; background: #e6f3eb; color: #28634a; }
-.liveFeedToggle.active:hover { border-color: #c39963; background: #fff3df; color: #795a29; }
-.liveFeedToggle.paused { border-color: #c9a8a0; background: #f6e9e6; color: #854e44; }
-.liveFeedToggle.paused:hover { border-color: #83b49a; background: #e6f3eb; color: #28634a; }
-.liveConnectionLine { min-height: 23px; }
-.liveStreamState { padding: 4px 8px; border-radius: 3px; background: #edf1f2; color: #53646a; font-size: 11px; font-weight: 700; }
-.liveStreamState.receiving { background: #e6f3eb; color: #28634a; }
-.liveStreamState.connected { background: #fff3df; color: #795a29; }
-.liveStreamState.unavailable { background: #f6e9e6; color: #854e44; }
-.liveStreamState.paused { background: #edf1f2; color: #53646a; }
+.liveStatusList { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 12px; }
+.liveStreamCard { display: grid; align-content: start; gap: 8px; min-width: 0; padding: 15px; border: 1px solid var(--line); border-radius: 7px; background: #fff; box-shadow: 0 1px 2px rgb(25 48 57 / 4%); }
+.liveStreamCardHeader { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.liveStreamIdentity { display: grid; gap: 1px; min-width: 0; }
+.liveStreamIdentity span { color: var(--muted); font-size: 9px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+.liveStreamIdentity strong { overflow: hidden; color: #223139; font-size: 17px; letter-spacing: .035em; text-overflow: ellipsis; white-space: nowrap; }
+.liveStatusBadge { flex: none; padding: 4px 9px; border: 1px solid; border-radius: 999px; font-size: 11px; font-weight: 680; line-height: 1.2; }
+.liveStatusBadge.active { border-color: #b8d9c7; background: #edf7f1; color: #28634a; }
+.liveStatusBadge.ready { border-color: #dfc69e; background: #fff8ea; color: #72552c; }
+.liveStatusBadge.paused { border-color: #dec5bf; background: #fbf1ef; color: #7b4d43; }
+.liveStreamDescription { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.4; }
+.liveReceivingIndicator { display: flex; align-items: center; gap: 7px; margin: 0; color: #28634a; font-size: 12px; font-weight: 620; line-height: 1.4; }
+.liveReceivingLight { width: 8px; height: 8px; flex: none; border-radius: 50%; background: #25a765; box-shadow: 0 0 0 3px rgb(37 167 101 / 13%); animation: receivingPulse 900ms ease-in-out infinite alternate; }
+.liveStreamStarted { display: flex; flex-wrap: wrap; gap: 4px 7px; margin: 0; color: #34464d; font-size: 11px; font-variant-numeric: tabular-nums; line-height: 1.4; }
+.liveStreamStarted span { color: var(--muted); }
+@keyframes receivingPulse { from { opacity: .28; } to { opacity: 1; box-shadow: 0 0 0 4px rgb(37 167 101 / 17%); } }
+@media (prefers-reduced-motion: reduce) { .liveReceivingLight { animation: none; } }
+.liveStreamDisclosure { margin-top: 2px; border-top: 1px solid #e8edef; }
+.liveStreamDisclosure summary { display: flex; align-items: center; gap: 7px; width: max-content; margin-top: 8px; color: var(--accent-dark); font-size: 12px; font-weight: 620; list-style: none; cursor: pointer; }
+.liveStreamDisclosure summary::-webkit-details-marker { display: none; }
+.liveStreamDisclosure summary::before { width: 6px; height: 6px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; content: ""; transform: rotate(-45deg); transition: transform 150ms ease; }
+.liveStreamDisclosure[open] summary::before { transform: rotate(45deg) translate(-1px, -1px); }
+.liveStreamDisclosure summary:hover { color: #074f65; }
+.liveStreamDisclosure summary:focus-visible { border-radius: 2px; outline: 2px solid #55a7bd; outline-offset: 3px; }
+.hideDetailsLabel, .liveStreamDisclosure[open] .showDetailsLabel { display: none; }
+.liveStreamDisclosure[open] .hideDetailsLabel { display: inline; }
+.liveStreamDetails { display: grid; gap: 13px; padding-top: 13px; }
 .liveStreamFacts { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 5px 12px; margin: 0; font-size: 12px; }
 .liveStreamFacts dt { color: var(--muted); }
 .liveStreamFacts dd { min-width: 0; margin: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
 .connectionUp { color: #28634a; }
 .connectionDown { color: #765c55; }
 .livePreviewButton { justify-self: start; }
+.liveStreamActions { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding-top: 11px; border-top: 1px solid #edf1f2; }
+.publicRtspCardControl { display: flex; align-items: center; gap: 7px; }
+.publicRtspToggle, .publicRtspDialogToggle { display: flex; grid-template-columns: none; align-items: center; gap: 7px; text-transform: none; letter-spacing: normal; }
+.publicRtspToggle input, .publicRtspDialogToggle input { width: 17px; height: 17px; min-height: 0; margin: 0; padding: 0; }
 .formGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; align-items: end; margin-top: 18px; }
 .list { display: grid; gap: 8px; margin-top: 18px; }
 .row { display: grid; grid-template-columns: minmax(180px, 1fr) auto; gap: 14px; align-items: center; padding: 13px 14px; border: 1px solid var(--line); border-radius: 4px; background: #fff; }
@@ -158,6 +173,9 @@ progress::-moz-progress-bar { border-radius: 999px; background: #1383a2; }
 dialog { max-width: 430px; padding: 24px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); color: #243036; box-shadow: 0 18px 55px #1e2a3090; }
 dialog::backdrop { background: #18262cb3; }
 dialog form { display: grid; gap: 13px; }
+#renameVideoDialog { width: min(720px, calc(100vw - 32px)); max-width: 720px; }
+.publicRtspDialog { width: min(540px, calc(100vw - 32px)); max-width: 540px; }
+.publicRtspDialog h2 { margin: 0; }
 .dialogActions { display: flex; justify-content: flex-end; gap: 8px; }
 .publishUrlField { display: grid; gap: 6px; min-width: 0; }
 .publishUrlLabel { color: #37474e; font-size: 13px; font-weight: 620; }
@@ -170,7 +188,6 @@ dialog form { display: grid; gap: 13px; }
 .passwordInputRow input { width: 100%; min-width: 0; }
 .passwordVisibilityButton { display: grid; place-items: center; width: 39px; min-height: 39px; padding: 7px; }
 .passwordVisibilityButton svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-.removePublishPassword { justify-self: start; }
 .encoderSettingsDialog { width: min(540px, calc(100vw - 32px)); max-width: 540px; }
 .encoderSettingsDialog h2 { margin: 0 0 6px; }
 .encoderSettingsDialog > p { margin: 0 0 16px; }

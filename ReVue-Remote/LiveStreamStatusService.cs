@@ -2,8 +2,8 @@ using System.Text.Json;
 
 namespace ReVueRemote;
 
-// Reads MediaMTX path status and disconnects an RTMP publisher when an operator
-// pauses its Live Rink ID.
+// Reads MediaMTX path status and disconnects publishers or readers when their
+// per-rink access is revoked.
 public sealed class LiveStreamStatusService
 {
     private readonly HttpClient _client;
@@ -25,6 +25,7 @@ public sealed class LiveStreamStatusService
     {
         var keys = liveKeys.ToArray();
         var paths = new Dictionary<string, LiveStreamStatus>(StringComparer.Ordinal);
+        var rtspViewers = new Dictionary<string, List<RtspViewer>>(StringComparer.OrdinalIgnoreCase);
         var available = true;
         try
         {
@@ -50,12 +51,14 @@ public sealed class LiveStreamStatusService
                     var (width, height, codecs) = ReadTracks(item);
                     paths[code] = new(code, true, ready, ready ? started : null,
                         ready ? bytes : null, ready ? width : null, ready ? height : null,
-                        ready ? codecs : Array.Empty<string>(), false, 0, []);
+                        ready ? codecs : Array.Empty<string>(), false, 0, [], false, false, []);
                 }
                 var pageCount = Integer(root, "pageCount") ?? 1;
                 if (page + 1 >= pageCount) break;
                 if (page == 19) throw new JsonException("MediaMTX returned too many path pages.");
             }
+            if (keys.Any(key => key.PublicRtspEnabled))
+                rtspViewers = await GetRtspViewersAsync(cancellationToken);
         }
         catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException)
         {
@@ -68,13 +71,16 @@ public sealed class LiveStreamStatusService
             var connections = await sessions.GetRemoteConnectionStatusAsync(key.Code, cancellationToken);
             var media = paths.GetValueOrDefault(key.Code) ?? new LiveStreamStatus(
                 key.Code, key.LiveFeedActive, false, null, null, null, null,
-                Array.Empty<string>(), false, 0, []);
+                Array.Empty<string>(), false, 0, [], false, false, []);
             streams.Add(media with
             {
                 Active = key.LiveFeedActive,
                 VroConnected = connections.VroConnected,
                 RemoteClientCount = connections.RemoteClientCount,
-                Roles = connections.Roles
+                Roles = connections.Roles,
+                PublicRtspEnabled = key.PublicRtspEnabled,
+                HasPublicRtspPassword = key.HasPublicRtspPassword,
+                RtspViewers = rtspViewers.GetValueOrDefault(key.Code)?.ToArray() ?? []
             });
         }
         return new(available, streams.ToArray());
@@ -87,8 +93,10 @@ public sealed class LiveStreamStatusService
         {
             for (var page = 0; page < 20; page++)
             {
-                using var response = await _client.GetAsync(
-                    $"{_apiBase}/v3/rtmpconns/list?page={page}&itemsPerPage=500", cancellationToken);
+                var (pageResponse, currentApi) = await GetWithLegacyFallbackAsync(
+                    $"/v3/rtmp/conns/list?page={page}&itemsPerPage=500",
+                    $"/v3/rtmpconns/list?page={page}&itemsPerPage=500", cancellationToken);
+                using var response = pageResponse;
                 response.EnsureSuccessStatusCode();
                 using var document = await JsonDocument.ParseAsync(
                     await response.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
@@ -103,7 +111,8 @@ public sealed class LiveStreamStatusService
                     if (id is null || !string.Equals(path, rinkId, StringComparison.OrdinalIgnoreCase) ||
                         !string.Equals(state, "publish", StringComparison.OrdinalIgnoreCase)) continue;
                     using var kicked = await _client.PostAsync(
-                        $"{_apiBase}/v3/rtmpconns/kick/{Uri.EscapeDataString(id)}", null, cancellationToken);
+                        $"{_apiBase}{(currentApi ? "/v3/rtmp/conns/kick/" : "/v3/rtmpconns/kick/")}{Uri.EscapeDataString(id)}",
+                        null, cancellationToken);
                     kicked.EnsureSuccessStatusCode();
                 }
                 var pageCount = Integer(root, "pageCount") ?? 1;
@@ -117,6 +126,95 @@ public sealed class LiveStreamStatusService
                 rinkId);
         }
     }
+
+    public async Task KickRtspReadersAsync(string rinkId, CancellationToken cancellationToken)
+    {
+        rinkId = RemoteSessionStore.NormalizeSessionCode(rinkId);
+        try
+        {
+            for (var page = 0; page < 20; page++)
+            {
+                var (pageResponse, currentApi) = await GetWithLegacyFallbackAsync(
+                    $"/v3/rtsp/sessions/list?page={page}&itemsPerPage=500",
+                    $"/v3/rtspsessions/list?page={page}&itemsPerPage=500", cancellationToken);
+                using var response = pageResponse;
+                response.EnsureSuccessStatusCode();
+                using var document = await JsonDocument.ParseAsync(
+                    await response.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
+                var root = document.RootElement;
+                if (!root.TryGetProperty("items", out var items) || items.ValueKind != JsonValueKind.Array)
+                    throw new JsonException("MediaMTX did not return an RTSP session list.");
+                foreach (var item in items.EnumerateArray())
+                {
+                    var id = String(item, "id");
+                    var path = String(item, "path");
+                    var state = String(item, "state");
+                    if (id is null || !string.Equals(path, rinkId, StringComparison.OrdinalIgnoreCase) ||
+                        !string.Equals(state, "read", StringComparison.OrdinalIgnoreCase)) continue;
+                    using var kicked = await _client.PostAsync(
+                        $"{_apiBase}{(currentApi ? "/v3/rtsp/sessions/kick/" : "/v3/rtspsessions/kick/")}{Uri.EscapeDataString(id)}",
+                        null, cancellationToken);
+                    kicked.EnsureSuccessStatusCode();
+                }
+                var pageCount = Integer(root, "pageCount") ?? 1;
+                if (page + 1 >= pageCount) break;
+            }
+        }
+        catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException)
+        {
+            _logger.LogWarning(ex, "MediaMTX did not disconnect RTSP readers for {RinkId}", rinkId);
+        }
+    }
+
+    private async Task<Dictionary<string, List<RtspViewer>>> GetRtspViewersAsync(
+        CancellationToken cancellationToken)
+    {
+        var viewers = new Dictionary<string, List<RtspViewer>>(StringComparer.OrdinalIgnoreCase);
+        for (var page = 0; page < 20; page++)
+        {
+            var (pageResponse, _) = await GetWithLegacyFallbackAsync(
+                $"/v3/rtsp/sessions/list?page={page}&itemsPerPage=500",
+                $"/v3/rtspsessions/list?page={page}&itemsPerPage=500", cancellationToken);
+            using var response = pageResponse;
+            response.EnsureSuccessStatusCode();
+            using var document = await JsonDocument.ParseAsync(
+                await response.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
+            var root = document.RootElement;
+            if (!root.TryGetProperty("items", out var items) || items.ValueKind != JsonValueKind.Array)
+                throw new JsonException("MediaMTX did not return an RTSP session list.");
+            foreach (var item in items.EnumerateArray())
+            {
+                var path = String(item, "path");
+                if (path is null || !string.Equals(String(item, "state"), "read", StringComparison.OrdinalIgnoreCase))
+                    continue;
+                if (!viewers.TryGetValue(path, out var pathViewers))
+                    viewers[path] = pathViewers = [];
+                var user = String(item, "user");
+                pathViewers.Add(new(
+                    string.IsNullOrWhiteSpace(user) ? "Unknown" : user,
+                    RemoteIp(String(item, "remoteAddr"))));
+            }
+            var pageCount = Integer(root, "pageCount") ?? 1;
+            if (page + 1 >= pageCount) break;
+            if (page == 19) throw new JsonException("MediaMTX returned too many RTSP session pages.");
+        }
+        return viewers;
+    }
+
+    private async Task<(HttpResponseMessage Response, bool CurrentApi)> GetWithLegacyFallbackAsync(
+        string currentPath, string legacyPath, CancellationToken cancellationToken)
+    {
+        var response = await _client.GetAsync($"{_apiBase}{currentPath}", cancellationToken);
+        if (response.StatusCode != System.Net.HttpStatusCode.NotFound)
+            return (response, true);
+        response.Dispose();
+        return (await _client.GetAsync($"{_apiBase}{legacyPath}", cancellationToken), false);
+    }
+
+    private static string RemoteIp(string? remoteAddress)
+        => System.Net.IPEndPoint.TryParse(remoteAddress, out var endpoint)
+            ? endpoint.Address.ToString()
+            : remoteAddress ?? "Unknown";
 
     private static (int? Width, int? Height, string[] Codecs) ReadTracks(JsonElement path)
     {
@@ -164,4 +262,6 @@ public sealed record LiveStreamStatusSnapshot(bool Available, LiveStreamStatus[]
 public sealed record LiveStreamStatus(
     string Code, bool Active, bool Ready, DateTimeOffset? StartedAtUtc, long? TotalBytes,
     int? Width, int? Height, string[] Codecs, bool VroConnected,
-    int RemoteClientCount, RemoteViewerRoleCount[] Roles);
+    int RemoteClientCount, RemoteViewerRoleCount[] Roles,
+    bool PublicRtspEnabled, bool HasPublicRtspPassword, RtspViewer[] RtspViewers);
+public sealed record RtspViewer(string User, string IpAddress);

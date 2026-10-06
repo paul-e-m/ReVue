@@ -233,8 +233,12 @@ app.MapPost("/api/internal/mediamtx-auth", async (
         return await accounts.AuthorizeLivePublisherAsync(request.Path, request.Password, context.RequestAborted)
             ? Results.Ok() : Results.Unauthorized();
     if (string.Equals(request.Action, "read", StringComparison.OrdinalIgnoreCase) &&
-        (string.Equals(request.Protocol, "rtsp", StringComparison.OrdinalIgnoreCase) ||
-         string.Equals(request.Protocol, "hls", StringComparison.OrdinalIgnoreCase)))
+        string.Equals(request.Protocol, "rtsp", StringComparison.OrdinalIgnoreCase))
+        return await accounts.AuthorizePublicRtspReaderAsync(
+            request.Path, request.Password, context.RequestAborted)
+            ? Results.Ok() : Results.Unauthorized();
+    if (string.Equals(request.Action, "read", StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(request.Protocol, "hls", StringComparison.OrdinalIgnoreCase))
         return Results.Ok();
     return Results.Unauthorized();
 });
@@ -392,7 +396,7 @@ app.MapGet("/api/manage/keys/{code}/media", async (
 }).RequireAuthorization();
 app.MapPut("/api/manage/keys/{code}/media", async (
     string code, UpdateKeyMediaRequest request, CloudAccountStore accounts,
-    HttpContext context) =>
+    LiveStreamStatusService streams, HttpContext context) =>
 {
     try
     {
@@ -402,8 +406,10 @@ app.MapPut("/api/manage/keys/{code}/media", async (
             !string.Equals(request.Mode, SessionKeyModes.Live, StringComparison.OrdinalIgnoreCase))
             return Results.BadRequest("Rink ID type cannot be changed after creation.");
         var result = await accounts.UpdateKeyMediaAsync(
-            code, request.PublishPassword,
+            code, request.PublishPassword, request.PublicRtspEnabled, request.PublicRtspPassword,
             CurrentUserId(context), IsAdmin(context), context.RequestAborted);
+        if (request.PublicRtspEnabled == false || request.PublicRtspPassword is not null)
+            await streams.KickRtspReadersAsync(code, context.RequestAborted);
         return Results.Ok(result);
     }
     catch (UnauthorizedAccessException) { return Results.Forbid(); }
@@ -970,16 +976,23 @@ app.MapGet("/api/sessions/{sessionCode}/events", async (
     context.Response.Headers["Cache-Control"] = "no-cache, no-store";
     context.Response.Headers["Connection"] = "keep-alive";
     context.Response.Headers["X-Accel-Buffering"] = "no";
+    var viewerRole = RemoteViewerRoles.Normalize(context.Request.Query["role"].ToString());
+    var includeViewerRoles = viewerRole == "data-specialist";
 
     async Task WriteStateAsync(PlaybackState state, bool advancePlayingPosition)
     {
         var deliveredState = SnapshotForDelivery(state, advancePlayingPosition);
         await context.Response.WriteAsync("event: playback\n", context.RequestAborted);
         await context.Response.WriteAsync($"data: {JsonSerializer.Serialize(deliveredState, jsonOptions)}\n\n", context.RequestAborted);
+        if (includeViewerRoles)
+        {
+            await context.Response.WriteAsync("event: viewer-roles\n", context.RequestAborted);
+            await context.Response.WriteAsync($"data: {JsonSerializer.Serialize(store.GetRemoteViewerRoleCounts(sessionCode), jsonOptions)}\n\n", context.RequestAborted);
+        }
         await context.Response.Body.FlushAsync(context.RequestAborted);
     }
 
-    using var subscription = store.Subscribe(sessionCode, context.Request.Query["role"].ToString());
+    using var subscription = store.Subscribe(sessionCode, viewerRole);
     await context.Response.WriteAsync("event: viewer-session\n", context.RequestAborted);
     await context.Response.WriteAsync($"data: {JsonSerializer.Serialize(subscription.Id)}\n\n", context.RequestAborted);
     await context.Response.Body.FlushAsync(context.RequestAborted);

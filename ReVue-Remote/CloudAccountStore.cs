@@ -12,6 +12,7 @@ public sealed partial class CloudAccountStore
     private readonly string _usersPath;
     private readonly string _keysPath;
     private readonly IDataProtector _publishPasswordProtector;
+    private readonly IDataProtector _publicRtspPasswordProtector;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly JsonSerializerOptions _json = new(JsonSerializerDefaults.Web) { WriteIndented = true };
 
@@ -28,6 +29,8 @@ public sealed partial class CloudAccountStore
         _keysPath = Path.Combine(_systemRoot, "keys.json");
         _publishPasswordProtector = dataProtectionProvider.CreateProtector(
             "ReVueRemote.LivePublishPassword.v1");
+        _publicRtspPasswordProtector = dataProtectionProvider.CreateProtector(
+            "ReVueRemote.PublicRtspPassword.v1");
     }
 
     [GeneratedRegex("^[A-Z0-9]{6}$", RegexOptions.CultureInvariant)]
@@ -247,7 +250,9 @@ public sealed partial class CloudAccountStore
                     CreatedAtUtc = key.CreatedAtUtc,
                     Mode = SessionKeyModes.Normalize(key.Mode),
                     HasPublishPassword = !string.IsNullOrEmpty(key.PublishPasswordHash),
-                    LiveFeedActive = key.LiveFeedActive
+                    LiveFeedActive = key.LiveFeedActive,
+                    PublicRtspEnabled = key.PublicRtspEnabled,
+                    HasPublicRtspPassword = !string.IsNullOrEmpty(key.PublicRtspPasswordHash)
                 })
                 .ToList();
         }
@@ -304,19 +309,34 @@ public sealed partial class CloudAccountStore
             var key = keys.FirstOrDefault(item => item.Code == code);
             if (key is null || SessionKeyModes.Normalize(key.Mode) != SessionKeyModes.Live ||
                 !key.LiveFeedActive) return false;
-            var authorized = string.IsNullOrEmpty(key.PublishPasswordHash)
-                ? string.IsNullOrEmpty(password)
-                : VerifyPassword(password ?? "", key.PublishPasswordHash);
+            if (string.IsNullOrEmpty(key.PublishPasswordHash)) return false;
+            var authorized = VerifyPassword(password ?? "", key.PublishPasswordHash);
             // Migrate pre-reveal passwords the next time their publisher
             // successfully authenticates, when the plaintext is available.
-            if (authorized && !string.IsNullOrEmpty(key.PublishPasswordHash) &&
-                !string.IsNullOrEmpty(password) &&
-                TryUnprotectPublishPassword(key.PublishPasswordProtected) is null)
+            if (authorized && !string.IsNullOrEmpty(password) &&
+                TryUnprotectPassword(_publishPasswordProtector, key.PublishPasswordProtected) is null)
             {
                 key.PublishPasswordProtected = _publishPasswordProtector.Protect(password);
                 await WriteAsync(_keysPath, keys, cancellationToken);
             }
             return authorized;
+        }
+        finally { _gate.Release(); }
+    }
+
+    public async Task<bool> AuthorizePublicRtspReaderAsync(
+        string code, string? password, CancellationToken cancellationToken = default)
+    {
+        code = NormalizeKey(code);
+        if (!IsValidKeyFormat(code)) return false;
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            var key = (await ReadKeysAsync(cancellationToken)).FirstOrDefault(item => item.Code == code);
+            return key is not null && SessionKeyModes.Normalize(key.Mode) == SessionKeyModes.Live &&
+                key.LiveFeedActive && key.PublicRtspEnabled &&
+                !string.IsNullOrEmpty(key.PublicRtspPasswordHash) &&
+                VerifyPassword(password ?? "", key.PublicRtspPasswordHash);
         }
         finally { _gate.Release(); }
     }
@@ -335,24 +355,34 @@ public sealed partial class CloudAccountStore
             if (SessionKeyModes.Normalize(key.Mode) != SessionKeyModes.Live)
                 throw new InvalidOperationException("Recorded video Rink IDs do not have stream settings.");
             var hasPassword = !string.IsNullOrEmpty(key.PublishPasswordHash);
-            var password = TryUnprotectPublishPassword(key.PublishPasswordProtected);
+            var password = TryUnprotectPassword(_publishPasswordProtector, key.PublishPasswordProtected);
+            var hasPublicRtspPassword = !string.IsNullOrEmpty(key.PublicRtspPasswordHash);
+            var publicRtspPassword = TryUnprotectPassword(
+                _publicRtspPasswordProtector, key.PublicRtspPasswordProtected);
             return new ManagedKeyMediaSettings
             {
                 HasPublishPassword = hasPassword,
                 PublishPassword = password,
-                PasswordCanBeRevealed = !hasPassword || password is not null
+                PasswordCanBeRevealed = !hasPassword || password is not null,
+                PublicRtspEnabled = key.PublicRtspEnabled,
+                HasPublicRtspPassword = hasPublicRtspPassword,
+                PublicRtspPassword = publicRtspPassword,
+                PublicRtspPasswordCanBeRevealed = !hasPublicRtspPassword || publicRtspPassword is not null
             };
         }
         finally { _gate.Release(); }
     }
 
     public async Task<ManagedSessionKeyRecord> UpdateKeyMediaAsync(
-        string code, string? publishPassword, string userId, bool isAdmin,
+        string code, string? publishPassword, bool? publicRtspEnabled,
+        string? publicRtspPassword, string userId, bool isAdmin,
         CancellationToken cancellationToken)
     {
         code = NormalizeKey(code);
         if (publishPassword is { Length: > 256 })
             throw new InvalidOperationException("The publish password cannot exceed 256 characters.");
+        if (publicRtspPassword is { Length: > 256 })
+            throw new InvalidOperationException("The public RTSP password cannot exceed 256 characters.");
         await _gate.WaitAsync(cancellationToken);
         try
         {
@@ -363,12 +393,26 @@ public sealed partial class CloudAccountStore
                 throw new UnauthorizedAccessException("You do not have permission to edit this Rink ID.");
             if (SessionKeyModes.Normalize(key.Mode) != SessionKeyModes.Live)
                 throw new InvalidOperationException("Recorded video Rink IDs do not have stream settings. Rink ID type cannot be changed after creation.");
+            if (string.IsNullOrEmpty(publishPassword) && string.IsNullOrEmpty(key.PublishPasswordHash))
+                throw new InvalidOperationException("Live Rink IDs require an RTMP publish password.");
+            if (publishPassword is { Length: 0 })
+                throw new InvalidOperationException("The RTMP publish password cannot be removed.");
             if (publishPassword is not null)
             {
-                key.PublishPasswordHash = publishPassword.Length == 0 ? "" : HashPassword(publishPassword);
-                key.PublishPasswordProtected = publishPassword.Length == 0
-                    ? "" : _publishPasswordProtector.Protect(publishPassword);
+                key.PublishPasswordHash = HashPassword(publishPassword);
+                key.PublishPasswordProtected = _publishPasswordProtector.Protect(publishPassword);
             }
+            if (publicRtspPassword is { Length: 0 })
+                throw new InvalidOperationException("The public RTSP password cannot be empty.");
+            if (publicRtspPassword is not null)
+            {
+                key.PublicRtspPasswordHash = HashPassword(publicRtspPassword);
+                key.PublicRtspPasswordProtected = _publicRtspPasswordProtector.Protect(publicRtspPassword);
+            }
+            var enablePublicRtsp = publicRtspEnabled ?? key.PublicRtspEnabled;
+            if (enablePublicRtsp && string.IsNullOrEmpty(key.PublicRtspPasswordHash))
+                throw new InvalidOperationException("Enter a password before enabling Public RTSP.");
+            key.PublicRtspEnabled = enablePublicRtsp;
             await WriteAsync(_keysPath, keys, cancellationToken);
             return new ManagedSessionKeyRecord
             {
@@ -377,7 +421,9 @@ public sealed partial class CloudAccountStore
                 CreatedAtUtc = key.CreatedAtUtc,
                 Mode = SessionKeyModes.Live,
                 HasPublishPassword = !string.IsNullOrEmpty(key.PublishPasswordHash),
-                LiveFeedActive = key.LiveFeedActive
+                LiveFeedActive = key.LiveFeedActive,
+                PublicRtspEnabled = key.PublicRtspEnabled,
+                HasPublicRtspPassword = !string.IsNullOrEmpty(key.PublicRtspPasswordHash)
             };
         }
         finally { _gate.Release(); }
@@ -407,7 +453,9 @@ public sealed partial class CloudAccountStore
                 CreatedAtUtc = key.CreatedAtUtc,
                 Mode = SessionKeyModes.Live,
                 HasPublishPassword = !string.IsNullOrEmpty(key.PublishPasswordHash),
-                LiveFeedActive = key.LiveFeedActive
+                LiveFeedActive = key.LiveFeedActive,
+                PublicRtspEnabled = key.PublicRtspEnabled,
+                HasPublicRtspPassword = !string.IsNullOrEmpty(key.PublicRtspPasswordHash)
             };
         }
         finally { _gate.Release(); }
@@ -565,10 +613,10 @@ public sealed partial class CloudAccountStore
         catch { return false; }
     }
 
-    private string? TryUnprotectPublishPassword(string? protectedPassword)
+    private static string? TryUnprotectPassword(IDataProtector protector, string? protectedPassword)
     {
         if (string.IsNullOrEmpty(protectedPassword)) return null;
-        try { return _publishPasswordProtector.Unprotect(protectedPassword); }
+        try { return protector.Unprotect(protectedPassword); }
         catch (CryptographicException) { return null; }
     }
 }
@@ -619,6 +667,9 @@ public sealed class SessionKeyRecord
     public string Mode { get; set; } = SessionKeyModes.Recorded;
     public string PublishPasswordHash { get; set; } = "";
     public string PublishPasswordProtected { get; set; } = "";
+    public bool PublicRtspEnabled { get; set; }
+    public string PublicRtspPasswordHash { get; set; } = "";
+    public string PublicRtspPasswordProtected { get; set; } = "";
     // Existing Rink IDs predate this switch and remain enabled when loaded.
     public bool LiveFeedActive { get; set; } = true;
 }
@@ -631,17 +682,25 @@ public sealed class ManagedSessionKeyRecord
     public string Mode { get; set; } = SessionKeyModes.Recorded;
     public bool HasPublishPassword { get; set; }
     public bool LiveFeedActive { get; set; } = true;
+    public bool PublicRtspEnabled { get; set; }
+    public bool HasPublicRtspPassword { get; set; }
 }
 public sealed class UpdateKeyMediaRequest
 {
     public string? Mode { get; set; }
     public string? PublishPassword { get; set; }
+    public bool? PublicRtspEnabled { get; set; }
+    public string? PublicRtspPassword { get; set; }
 }
 public sealed class ManagedKeyMediaSettings
 {
     public bool HasPublishPassword { get; set; }
     public string? PublishPassword { get; set; }
     public bool PasswordCanBeRevealed { get; set; }
+    public bool PublicRtspEnabled { get; set; }
+    public bool HasPublicRtspPassword { get; set; }
+    public string? PublicRtspPassword { get; set; }
+    public bool PublicRtspPasswordCanBeRevealed { get; set; }
 }
 public sealed class UpdateLiveFeedStateRequest { public bool? Active { get; set; } }
 public sealed class LoginRequest { public string Email { get; set; } = ""; public string Password { get; set; } = ""; }

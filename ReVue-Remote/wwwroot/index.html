@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>ReVue-Remote</title>
-        <link rel="stylesheet" href="styles.css?v=20261004-recorded-offline" />
+        <link rel="stylesheet" href="styles.css?v=20261006-blank-role-option" />
 </head>
 <body>
     <div id="pageFrame" class="pageFrame">
@@ -13,7 +13,7 @@
                 <fieldset class="sessionControl controlGroup">
                     <legend class="visuallyHidden" data-i18n="rinkId">Rink ID</legend>
                     <span class="controlLabel" aria-hidden="true" data-i18n="rinkId">Rink ID</span>
-                    <input id="sessionCode" name="sessionCode" type="text" maxlength="6" pattern="[A-Za-z0-9]{6}" placeholder="AB1234" spellcheck="false" aria-label="Six-character Rink ID" data-i18n-aria="rinkIdInput" />
+                    <input id="sessionCode" name="sessionCode" type="text" maxlength="6" pattern="[A-Za-z0-9]{6}" spellcheck="false" aria-label="Six-character Rink ID" data-i18n-aria="rinkIdInput" />
                 </fieldset>
 
                 <fieldset class="volumeControl controlGroup">
@@ -34,22 +34,23 @@
                     <fieldset class="panelControl controlGroup">
                         <legend class="visuallyHidden" data-i18n="role">Role</legend>
                         <span class="controlLabel" aria-hidden="true" data-i18n="role">Role</span>
-                        <input id="panelType" name="panelType" type="hidden" value="technical-controller" />
+                        <input id="panelType" name="panelType" type="hidden" value="" />
                         <button id="panelTypeButton" class="panelTypeButton" type="button" aria-haspopup="listbox" aria-expanded="false">
-                            <span id="panelTypeLabel">Technical Controller</span>
+                            <span id="panelTypeLabel">Select a role</span>
                             <span class="panelTypeSizer" aria-hidden="true" data-i18n="technicalController">Technical Controller</span>
                             <span class="panelChevron" aria-hidden="true">⌄</span>
                         </button>
                         <div id="panelTypeMenu" class="panelTypeMenu hidden" role="listbox" aria-label="Viewer panel type" data-i18n-aria="viewerRole">
                             <button type="button" role="option" data-panel-type="announcer" data-i18n="announcer">Announcer</button>
                             <button type="button" role="option" data-panel-type="data-input-operator" data-i18n="dataInputOperator">Data Input Operator</button>
-                            <button type="button" role="option" data-panel-type="data-specialist" data-i18n="dataSpecialist">Data Specialist</button>
+                            <button type="button" role="option" data-panel-type="data-specialist" data-i18n="dataSpecialist">Event Technician</button>
                             <button type="button" role="option" data-panel-type="judging" data-i18n="judge">Judge</button>
                             <button type="button" role="option" data-panel-type="referee" data-i18n="referee">Referee</button>
                             <button type="button" role="option" data-panel-type="technical-controller" data-i18n="technicalController">Technical Controller</button>
                             <button type="button" role="option" data-panel-type="technical-specialist-1" data-i18n="technicalSpecialist1">Technical Specialist 1</button>
                             <button type="button" role="option" data-panel-type="technical-specialist-2" data-i18n="technicalSpecialist2">Technical Specialist 2</button>
                             <button type="button" role="option" data-panel-type="video-replay-operator" data-i18n="videoReplayOperator">Video Replay Operator</button>
+                            <button type="button" role="option" data-panel-type="" aria-label="No role" data-i18n-aria="noRole"></button>
                         </div>
                     </fieldset>
                     <div id="reviewIndicator" class="reviewIndicator hidden" role="status" aria-live="polite">
@@ -90,14 +91,14 @@
         <section class="viewer" aria-label="Passive remote replay player" data-i18n-aria="remotePlayer">
             <video id="video" playsinline preload="auto" disablepictureinpicture></video>
             <canvas id="liveTransitionFrame" class="liveTransitionFrame" aria-hidden="true"></canvas>
-            <div id="playbackStatus" class="playbackStatus" data-i18n="waitingForRinkId">Waiting for a Rink ID.</div>
+            <div id="playbackStatus" class="playbackStatus" data-i18n="waitingForRinkId">Waiting for a Rink ID and role.</div>
+            <div id="connectedClientBadges" class="connectedClientBadges hidden" aria-live="polite"></div>
             <div id="emptyState" class="emptyState enterRinkId">
                 <div class="testPattern">
                     <span id="testPatternLabel" class="testPatternLabel" data-i18n="noSignal">NO SIGNAL</span>
                 </div>
-                <div class="snow" aria-hidden="true"></div>
                 <span id="emptyStateMessage" class="emptyStateMessage" data-i18n="enterRinkId">Welcome to ReVue-Remote
-Enter Rink ID</span>
+Enter a Rink ID and select a role</span>
                 <div id="audioTestFeedback" class="audioTestFeedback">
                     <svg class="audioTestWave" viewBox="0 0 72 24" aria-hidden="true">
                         <path d="M0 12 C3 2 9 2 12 12 S21 22 24 12 S33 2 36 12 S45 22 48 12 S57 2 60 12 S69 22 72 12 S81 2 84 12 S93 22 96 12" />
@@ -158,6 +159,6 @@ Enter Rink ID</span>
     </div>
 
     <script src="hls.min.js?v=1.6.13"></script>
-    <script src="app.js?v=20261004-status-alert-phrasing"></script>
+    <script src="app.js?v=20261006-blank-role-option"></script>
 </body>
 </html>

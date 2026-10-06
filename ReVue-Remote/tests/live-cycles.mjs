@@ -105,7 +105,7 @@ async function checkUncontrolledViewer(viewer,label) {
     assert(after.sec>before.sec,`${label}/${role}: video is frozen`);
   }
   await viewer.eval(`document.querySelector('[data-panel-type="technical-controller"]').click()`);
-  console.log('PASS:',label,'shows moving live video for technical, Judge, Referee, Announcer, Data Specialist');
+  console.log('PASS:',label,'shows moving live video for technical, Judge, Referee, Announcer, Event Technician');
 }
 try {
   // Refuse to attach to an unrelated service already using a fixture port.

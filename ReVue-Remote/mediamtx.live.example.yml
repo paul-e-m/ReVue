@@ -11,8 +11,13 @@ apiAddress: 127.0.0.1:9997
 rtmp: yes
 rtmpAddress: :1935
 rtsp: yes
-rtspAddress: :8554
+# Port 554 keeps copied public URLs free of a non-standard port suffix. When
+# MediaMTX runs as a non-root systemd service, grant CAP_NET_BIND_SERVICE.
+rtspAddress: :554
 rtspTransports: [tcp]
+# HTTP-backed RTSP authentication supports Basic authentication. Use RTSPS or
+# a VPN as well if the stream and credentials must be encrypted in transit.
+rtspAuthMethods: [basic]
 hls: yes
 hlsAddress: 127.0.0.1:8888
 hlsVariant: fmp4

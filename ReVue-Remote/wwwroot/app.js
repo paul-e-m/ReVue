@@ -18,6 +18,7 @@
     const emptyStateMessage = document.getElementById("emptyStateMessage");
     const testPatternLabel = document.getElementById("testPatternLabel") || document.querySelector(".testPatternLabel");
     const playbackStatus = document.getElementById("playbackStatus");
+    const connectedClientBadges = document.getElementById("connectedClientBadges");
     const networkIndicator = document.getElementById("networkIndicator");
     const networkLatency = document.getElementById("networkLatency");
     const networkTransfer = document.getElementById("networkTransfer");
@@ -52,10 +53,10 @@
 
     const translations = {
         en: {
-            language: "Language", waitingForRinkId: "Waiting for a Rink ID.", volume: "Volume", mute: "Mute",
+            language: "Language", waitingForRinkId: "Waiting for a Rink ID and role.", volume: "Volume", mute: "Mute",
             videoVolume: "Video volume", rinkId: "Rink ID", rinkIdInput: "Six-character Rink ID", role: "Role", refresh: "Refresh",
-            viewerRole: "Viewer role", announcer: "Announcer", dataInputOperator: "Data Input Operator", dataSpecialist: "Data Specialist", judge: "Judge", referee: "Referee", technicalSpecialist1: "Technical Specialist 1", technicalSpecialist2: "Technical Specialist 2", technicalController: "Technical Controller", videoReplayOperator: "Video Replay Operator",
-            remotePlayer: "Passive remote replay player", enterRinkId: "Welcome to ReVue-Remote\nEnter Rink ID", waitingForVideo: "Stand by for video...", noSignal: "NO SIGNAL", standBy: "STAND BY", playTestTone: "Sound check", stopTestTone: "Sound off", testToneUnavailable: "Audio test unavailable", testToneVolume: "Volume: {percent}%", audioMuted: "Audio is muted", operatorOffline: "ReVue VRO connection lost.", play: "Play", pause: "Pause",
+            viewerRole: "Viewer role", noRole: "No role", selectRole: "Select a role", announcer: "Announcer", dataInputOperator: "Data Input Operator", dataSpecialist: "Event Technician", judge: "Judge", referee: "Referee", technicalSpecialist1: "Technical Specialist 1", technicalSpecialist2: "Technical Specialist 2", technicalController: "Technical Controller", videoReplayOperator: "Video Replay Operator",
+            remotePlayer: "Passive remote replay player", enterRinkId: "Welcome to ReVue-Remote\nEnter a Rink ID and select a role", waitingForVideo: "Stand by for video...", noSignal: "NO SIGNAL", standBy: "STAND BY", playTestTone: "Sound check", stopTestTone: "Sound off", testToneUnavailable: "Audio test unavailable", testToneVolume: "Volume: {percent}%", audioMuted: "Audio is muted", operatorOffline: "ReVue VRO connection lost.", play: "Play", pause: "Pause",
             playVideo: "Play video", pauseVideo: "Pause video", setStopwatchZero: "Set stopwatch zero",
             clearStopwatch: "Clear stopwatch", videoTimeline: "Video timeline", videoPlaybackPosition: "Video playback position",
             checking: "CHECKING…", disconnected: "DISCONNECTED", checkingServer: "Checking server connectivity", serverDisconnected: "Server disconnected",
@@ -73,16 +74,17 @@
             serverNotReached: "The ReVue-Remote server could not be reached.", playbackUnreadable: "The playback update could not be read.",
             connectedWaitingVro: "Connected. Waiting for ReVue VRO.", connectionInterrupted: "Connection interrupted. Reconnecting…",
             panelStatus: "Panel status", judgesReady: "Judges", techPanelReady: "Tech",
+            connectedClients: "Connected clients",
             competitorScored: "Scored", judgesReadyAlert: "Judges Are Ready", judgesNotReadyAlert: "Judges Are Not Ready",
             techPanelReadyAlert: "Tech Panel Is Ready", techPanelNotReadyAlert: "Tech Panel Not Ready",
             competitorScoredAlert: "Competitor Scored", statusOn: "on", statusOff: "off",
             statusUnavailable: "unavailable", statusUpdateFailed: "Status update failed. Try again."
         },
         fr: {
-            language: "Langue", waitingForRinkId: "En attente d’un ID de patinoire.", volume: "Volume", mute: "Muet",
+            language: "Langue", waitingForRinkId: "En attente d’un ID de patinoire et d’un rôle.", volume: "Volume", mute: "Muet",
             videoVolume: "Volume de la vidéo", rinkId: "ID de patinoire", rinkIdInput: "ID de patinoire à six caractères", role: "Rôle", refresh: "Actualiser",
-            viewerRole: "Rôle du spectateur", announcer: "Annonceur", dataInputOperator: "Le RED (DIO)", dataSpecialist: "Spécialiste des données", judge: "Juge", referee: "Arbitre", technicalSpecialist1: "Spécialiste technique 1", technicalSpecialist2: "Spécialiste technique 2", technicalController: "Contrôleur technique", videoReplayOperator: "Opérateur de reprise vidéo",
-            remotePlayer: "Lecteur de reprise à distance", enterRinkId: "Bienvenue dans ReVue-Remote\nSaisissez l’ID de patinoire", waitingForVideo: "En attente de la vidéo…", noSignal: "AUCUN SIGNAL", standBy: "EN ATTENTE", playTestTone: "Test sonore", stopTestTone: "Couper le son", testToneUnavailable: "Test audio indisponible", testToneVolume: "Volume : {percent} %", audioMuted: "Le son est coupé", operatorOffline: "Connexion à ReVue VRO perdue.", play: "Lire", pause: "Pause",
+            viewerRole: "Rôle du spectateur", noRole: "Aucun rôle", selectRole: "Sélectionnez un rôle", announcer: "Annonceur", dataInputOperator: "Le RED (DIO)", dataSpecialist: "Technicien d’événement", judge: "Juge", referee: "Arbitre", technicalSpecialist1: "Spécialiste technique 1", technicalSpecialist2: "Spécialiste technique 2", technicalController: "Contrôleur technique", videoReplayOperator: "Opérateur de reprise vidéo",
+            remotePlayer: "Lecteur de reprise à distance", enterRinkId: "Bienvenue dans ReVue-Remote\nSaisissez un ID de patinoire et sélectionnez un rôle", waitingForVideo: "En attente de la vidéo…", noSignal: "AUCUN SIGNAL", standBy: "EN ATTENTE", playTestTone: "Test sonore", stopTestTone: "Couper le son", testToneUnavailable: "Test audio indisponible", testToneVolume: "Volume : {percent} %", audioMuted: "Le son est coupé", operatorOffline: "Connexion à ReVue VRO perdue.", play: "Lire", pause: "Pause",
             playVideo: "Lire la vidéo", pauseVideo: "Mettre la vidéo en pause", setStopwatchZero: "Remettre le chronomètre à zéro",
             clearStopwatch: "Effacer le chronomètre", videoTimeline: "Chronologie de la vidéo", videoPlaybackPosition: "Position de lecture de la vidéo",
             checking: "VÉRIFICATION…", disconnected: "DÉCONNECTÉ", checkingServer: "Vérification de la connexion au serveur", serverDisconnected: "Serveur déconnecté",
@@ -100,6 +102,7 @@
             serverNotReached: "Le serveur ReVue-Remote est inaccessible.", playbackUnreadable: "La mise à jour de lecture est illisible.",
             connectedWaitingVro: "Connecté. En attente de ReVue VRO.", connectionInterrupted: "Connexion interrompue. Reconnexion…",
             panelStatus: "État du panel", judgesReady: "Juges", techPanelReady: "Tech",
+            connectedClients: "Clients connectés",
             competitorScored: "Noté", judgesReadyAlert: "Juges prêts", judgesNotReadyAlert: "Juges non prêts",
             techPanelReadyAlert: "Panel technique prêt", techPanelNotReadyAlert: "Panel technique non prêt",
             competitorScoredAlert: "Concurrent noté", statusOn: "activé", statusOff: "désactivé",
@@ -143,12 +146,21 @@
         "technical-controller": "technicalController",
         "video-replay-operator": "videoReplayOperator"
     };
+    const connectedClientRoleBadges = {
+        "technical-controller": { abbreviation: "TC", label: "technicalController" },
+        "technical-specialist-1": { abbreviation: "TS1", label: "technicalSpecialist1" },
+        "technical-specialist-2": { abbreviation: "TS2", label: "technicalSpecialist2" },
+        judging: { abbreviation: "J", label: "judge" },
+        referee: { abbreviation: "Ref", label: "referee" },
+        "data-specialist": { abbreviation: "ET", label: "dataSpecialist" },
+        announcer: { abbreviation: "Ann", label: "announcer" },
+        "data-input-operator": { abbreviation: "DIO", label: "dataInputOperator" }
+    };
     const technicalPanelTypes = new Set([
         "data-input-operator", "technical-specialist-1", "technical-specialist-2",
         "technical-controller", "video-replay-operator"
     ]);
-    const defaultPanelType = "technical-controller";
-    let panelType = defaultPanelType;
+    let panelType = "";
 
     function isTechnicalPanel() {
         return technicalPanelTypes.has(panelType);
@@ -188,6 +200,8 @@
     let lastTransferredByteTotal = null;
     let lastTransferSampleAtMs = 0;
     let rinkMode = "Recorded";
+    let connectedViewerRoles = [];
+    let connectedClientBadgeSignature = "";
     let liveHls = null;
     let liveErrorTimer = null;
     let liveTransitionTimer = null;
@@ -206,8 +220,8 @@
     const VIDEO_CACHE_NAME = "revue-video-chunks-v3";
     const VIDEO_CACHE_SCRIPT_URL = new URL("./video-cache-sw.js?v=20261003-live-viewer-id", document.baseURI).href;
     const STATUS_MIN_DISPLAY_MS = 1000;
-    const PANEL_SESSION_KEY = "ReVueRemotePanelType";
     const REFRESH_RINK_ID_KEY = "ReVueRemoteRefreshRinkId";
+    const REFRESH_PANEL_TYPE_KEY = "ReVueRemoteRefreshPanelType";
     const videoTransferViewerId = getVideoTransferViewerId();
     const videoCacheReady = initializeVideoCache();
 
@@ -261,6 +275,7 @@
         setTransferRate(transferRate);
         setVideoCacheSize(videoCacheSizeBytes);
         updateVroConnectionStatus();
+        renderConnectedClientBadges();
         renderCommunicationStatus();
         scheduleViewportFit();
     }
@@ -278,6 +293,26 @@
             button.setAttribute("aria-pressed", active ? "true" : "false");
             button.setAttribute("aria-label", `${t(indicator.alertLabel)}: ${t(!available ? "statusUnavailable" : active ? "statusOn" : "statusOff")}`);
         }
+    }
+
+    function renderConnectedClientBadges() {
+        const roles = panelType === "data-specialist"
+            ? connectedViewerRoles.filter(item => connectedClientRoleBadges[item.role] && item.count > 0)
+            : [];
+        const signature = `${language}|${panelType}|${roles.map(item => `${item.role}:${item.count}`).join("|")}`;
+        if (signature === connectedClientBadgeSignature) return;
+        connectedClientBadgeSignature = signature;
+        connectedClientBadges.replaceChildren(...roles.map(item => {
+            const definition = connectedClientRoleBadges[item.role];
+            const badge = document.createElement("span");
+            badge.className = "connectedClientBadge";
+            badge.textContent = `${item.count}${definition.abbreviation}`;
+            badge.title = `${item.count} ${t(definition.label)}`;
+            return badge;
+        }));
+        connectedClientBadges.classList.toggle("hidden", roles.length === 0);
+        connectedClientBadges.setAttribute("aria-label",
+            roles.length ? `${t("connectedClients")}: ${roles.map(item => `${item.count} ${t(connectedClientRoleBadges[item.role].label)}`).join(", ")}` : "");
     }
 
     function dismissCommunicationAlert(indicator) {
@@ -821,8 +856,9 @@
         vroConnectionStatus.classList.toggle("disconnected", !connected);
     }
 
-    function isSnowScreenVisible() {
-        return !emptyState.classList.contains("hidden") && emptyState.classList.contains("enterRinkId");
+    function isSetupPromptVisible() {
+        return !emptyState.classList.contains("hidden") &&
+            (emptyState.classList.contains("enterRinkId") || emptyState.classList.contains("selectRole"));
     }
 
     function isRinkIdDelayStatus() {
@@ -831,7 +867,7 @@
 
     function updatePlaybackStatusVisibility() {
         playbackStatus.hidden = isStandbyAfterStop(latestState) || isOperatorOfflineState(latestState) ||
-            (isSnowScreenVisible() && !isRinkIdDelayStatus()) || isRecordingState(latestState);
+            (isSetupPromptVisible() && !isRinkIdDelayStatus()) || isRecordingState(latestState);
     }
 
     function isPostRecordingState(state) {
@@ -867,10 +903,17 @@
             ? "standBy" : "noSignal");
     }
 
+    function isVideoVisible() {
+        return emptyState.classList.contains("hidden") && video.readyState >= 2;
+    }
+
+    function shouldShowLiveIndicator(state) {
+        return isVideoVisible() && !isPostRecordingState(state);
+    }
+
     function updateReviewIndicator(state) {
         reviewIndicator.classList.remove("live", "review", "hidden");
-        if (isRecordingState(state) && state?.playbackEnabled === true && state?.isPlaying === true &&
-            !!state?.videoId && emptyState.classList.contains("hidden")) {
+        if (shouldShowLiveIndicator(state)) {
             reviewIndicator.classList.add("live");
             reviewIndicatorText.textContent = t("live");
         } else if (isReviewState(state)) {
@@ -1071,6 +1114,7 @@
         updateTestPatternLabel(latestState);
         emptyState.classList.toggle("waitingForVideo", key === "waitingForVideo");
         emptyState.classList.toggle("enterRinkId", key === "enterRinkId");
+        emptyState.classList.toggle("selectRole", key === "selectRole");
         emptyState.classList.toggle("operatorOffline", key === "operatorOffline");
         emptyState.classList.remove("hidden");
         updateReviewIndicator(latestState);
@@ -1170,6 +1214,8 @@
         eventSource = null;
         for (const indicator of Object.keys(communicationAlerts)) dismissCommunicationAlert(indicator);
         viewerSessionId = "";
+        connectedViewerRoles = [];
+        renderConnectedClientBadges();
         communicationRequestPending = "";
         communicationFeedback.textContent = "";
         renderCommunicationStatus();
@@ -1201,6 +1247,21 @@
                 setStatus("playbackUnreadable");
             }
         });
+        source.addEventListener("viewer-roles", event => {
+            if (attempt !== connectionAttempt || eventSource !== source) return;
+            try {
+                const roles = JSON.parse(event.data);
+                connectedViewerRoles = Array.isArray(roles)
+                    ? roles.map(item => ({
+                        role: String(item?.role || ""),
+                        count: Math.max(0, Math.floor(Number(item?.count) || 0))
+                    }))
+                    : [];
+            } catch {
+                connectedViewerRoles = [];
+            }
+            renderConnectedClientBadges();
+        });
         source.onopen = () => {
             if (attempt !== connectionAttempt || eventSource !== source) return;
             setStatus("connectedWaitingVro", { code });
@@ -1214,7 +1275,7 @@
         };
     }
 
-    function showEnterRinkId() {
+    function resetViewerSession() {
         clearLiveFrame();
         if (liveErrorTimer !== null) {
             clearTimeout(liveErrorTimer);
@@ -1245,11 +1306,25 @@
         stateApplySequence++;
         resetJudgingReview();
         updateReviewIndicator(null);
+    }
+
+    function showEnterRinkId() {
+        resetViewerSession();
         setEmpty("enterRinkId");
         setStatus("enterRink");
         const url = new URL(location.href);
         url.searchParams.delete("session");
         history.replaceState(null, "", url);
+    }
+
+    function showRoleRequired(code) {
+        code = normalizeCode(code);
+        resetViewerSession();
+        sessionCodeInput.value = code;
+        setEmpty("selectRole");
+        setStatus("selectRole");
+        if (/^[A-Z0-9]{6}$/.test(code))
+            history.replaceState(null, "", `?session=${encodeURIComponent(code)}`);
     }
 
     function hostedPosition(state) {
@@ -2052,6 +2127,10 @@
             showEnterRinkId();
             return;
         }
+        if (!panelType) {
+            showRoleRequired(code);
+            return;
+        }
 
         const attempt = ++connectionAttempt;
         const previousSessionCode = sessionCode;
@@ -2119,6 +2198,8 @@
         const rinkId = normalizeCode(sessionCodeInput.value);
         if (rinkId.length === 6) sessionStorage.setItem(REFRESH_RINK_ID_KEY, rinkId);
         else sessionStorage.removeItem(REFRESH_RINK_ID_KEY);
+        if (panelTypeLabelKeys[panelType]) sessionStorage.setItem(REFRESH_PANEL_TYPE_KEY, panelType);
+        else sessionStorage.removeItem(REFRESH_PANEL_TYPE_KEY);
         window.location.reload();
     });
 
@@ -2144,13 +2225,14 @@
     });
 
     function updatePanelTypeLabel() {
-        panelTypeLabel.textContent = t(panelTypeLabelKeys[panelType] || "technicalController");
+        panelTypeLabel.textContent = t(panelTypeLabelKeys[panelType] || "selectRole");
     }
 
     function sortPanelTypeMenu() {
         const locale = language === "fr" ? "fr-CA" : "en-CA";
         [...panelTypeMenu.querySelectorAll("[data-panel-type]")]
-            .sort((a, b) => t(a.dataset.i18n).localeCompare(t(b.dataset.i18n), locale))
+            .sort((a, b) => !a.dataset.panelType ? 1 : !b.dataset.panelType ? -1 :
+                t(a.dataset.i18n).localeCompare(t(b.dataset.i18n), locale))
             .forEach(option => panelTypeMenu.append(option));
     }
 
@@ -2170,22 +2252,29 @@
     }
 
     panelTypeInput.addEventListener("change", () => {
-        panelType = panelTypeLabelKeys[panelTypeInput.value] ? panelTypeInput.value : defaultPanelType;
+        panelType = panelTypeLabelKeys[panelTypeInput.value] ? panelTypeInput.value : "";
         viewerSessionId = "";
+        connectedViewerRoles = [];
+        renderConnectedClientBadges();
         renderCommunicationStatus();
-        sessionStorage.setItem(PANEL_SESSION_KEY, panelType);
         updatePanelTypeLabel();
         panelTypeMenu.querySelectorAll("[data-panel-type]").forEach(option => {
             option.setAttribute("aria-selected", option.dataset.panelType === panelType ? "true" : "false");
         });
         applyZoomState(latestState);
+        const code = normalizeCode(sessionCodeInput.value);
+        if (!panelType) {
+            if (code.length === 6) showRoleRequired(code);
+            else showEnterRinkId();
+            return;
+        }
         resetJudgingReview();
         if (latestState) applyState(latestState).catch(() => { });
         if (eventSource && sessionCode) {
             eventSource.close();
             eventSource = null;
             openPlaybackEventStream(sessionCode, connectionAttempt);
-        }
+        } else if (code.length === 6) connect(code);
     });
 
     function closePanelTypeMenu() {
@@ -2359,10 +2448,12 @@
             if (judgingIsPlaying && video.paused) video.play().catch(() => { });
         } else if (latestState?.isPlaying && video.paused) {
             applyState(latestState).catch(() => { });
-        } else if (currentVideoId && video.volume > 0 && !video.muted) {
+        } else if (currentVideoId && video.paused && video.volume > 0 && !video.muted) {
             // A user gesture is required by major browsers before later
             // synchronized playback may begin with sound. Briefly starting and
-            // pausing the already-loaded element grants that permission.
+            // pausing an idle, already-loaded element grants that permission.
+            // Never run this against active playback: doing so pauses and seeks
+            // the live stream when its mute state changes.
             const target = normalizeToDuration(hostedPosition(latestState));
             video.play()
                 .then(() => {
@@ -2412,10 +2503,16 @@
     setMuted(localStorage.getItem("ReVueRemoteMuted") === "true", false);
     languageSelect.value = language;
     updateStaticTranslations();
-    const savedPanelType = sessionStorage.getItem(PANEL_SESSION_KEY);
-    panelType = panelTypeLabelKeys[savedPanelType] ? savedPanelType : defaultPanelType;
+    sessionStorage.removeItem("ReVueRemotePanelType");
+    const refreshPanelType = sessionStorage.getItem(REFRESH_PANEL_TYPE_KEY);
+    sessionStorage.removeItem(REFRESH_PANEL_TYPE_KEY);
+    panelType = panelTypeLabelKeys[refreshPanelType] ? refreshPanelType : "";
     panelTypeInput.value = panelType;
-    panelTypeInput.dispatchEvent(new Event("change"));
+    updatePanelTypeLabel();
+    panelTypeMenu.querySelectorAll("[data-panel-type]").forEach(option => {
+        option.setAttribute("aria-selected", option.dataset.panelType === panelType ? "true" : "false");
+    });
+    renderCommunicationStatus();
     updateJudgingControls();
     video.loop = true;
 

@@ -2,7 +2,11 @@
     const $ = id => document.getElementById(id);
     let me = null;
     let keys = [];
+    let savedPublishPassword = "";
+    let savedPublicRtspPassword = "";
+    let savedPublicRtspHasPassword = false;
     const liveSamples = new Map();
+    const expandedLiveStreams = new Set();
     let liveStatusLoading = false;
     let liveStatusReloadPending = false;
     let livePreviewHls = null;
@@ -44,14 +48,31 @@
         element.classList.toggle("ok", ok);
     }
 
+    async function copyText(text) {
+        if (navigator.clipboard?.writeText) {
+            await navigator.clipboard.writeText(text);
+            return;
+        }
+        const input = document.createElement("textarea");
+        input.value = text;
+        input.style.position = "fixed";
+        input.style.opacity = "0";
+        document.body.append(input);
+        input.select();
+        const copied = document.execCommand("copy");
+        input.remove();
+        if (!copied) throw new Error("Clipboard unavailable");
+    }
+
     function show(view) {
         const headings = {
             videos: ["Videos", "Upload and manage videos for your Rink IDs."],
             keys: ["Rink IDs", "Manage the folders available to your remote sessions."],
+            liveStreams: ["Live Streams", "Monitor and control your Remote Live feeds."],
             profile: ["My account", "Update your details and password."],
             users: ["Users", "Manage access to ReVue Remote."]
         };
-        for (const id of ["videos", "keys", "profile", "users"])
+        for (const id of ["videos", "keys", "liveStreams", "profile", "users"])
             $(`${id}View`).classList.toggle("hidden", id !== view);
         document.querySelectorAll("nav [data-view]").forEach(button => {
             if (button.dataset.view === view) button.setAttribute("aria-current", "page");
@@ -60,7 +81,7 @@
         $("pageTitle").textContent = headings[view]?.[0] || "Videos";
         $("pageDescription").textContent = headings[view]?.[1] || "";
         if (view === "videos") void loadStorageStatus();
-        if (view === "keys") void loadLiveStatuses();
+        if (view === "liveStreams") void loadLiveStatuses();
     }
 
     function esc(value) {
@@ -115,23 +136,20 @@
             `<button class="danger small" data-delete-key="${esc(key.code)}">Delete Rink ID</button></div></div>`
         }).join("") || `<p>${me.role === "Admin" ? "No Rink IDs have been created." : "You have not created any Rink IDs."}</p>`;
         const hasLive = keys.some(key => key.mode === "Live");
-        $("liveStatusPanel").classList.toggle("hidden", !hasLive);
         for (const code of liveSamples.keys())
             if (!keys.some(key => key.mode === "Live" && key.code === code)) liveSamples.delete(code);
-        if (hasLive && !$("keysView").classList.contains("hidden")) void loadLiveStatuses();
+        if (hasLive && !$("liveStreamsView").classList.contains("hidden")) void loadLiveStatuses();
         await loadVideos();
     }
 
     function liveStatusLabel(stream, available, now) {
         if (stream.active === false) {
             liveSamples.delete(stream.code);
-            return { text: "Paused. Live stream source ignored", style: "paused", rate: null };
+            return { text: "Paused", detail: "Live stream ignored", style: "paused", rate: null };
         }
         if (!available || !stream.ready) {
             liveSamples.delete(stream.code);
-            return !available
-                ? { text: "Monitoring unavailable", style: "unavailable" }
-                : { text: "Ready, waiting for feed", style: "waiting" };
+            return { text: "Ready", detail: "Ready, waiting for feed", style: "ready", rate: null };
         }
         const bytes = Number(stream.totalBytes);
         const prior = liveSamples.get(stream.code);
@@ -141,9 +159,9 @@
         const rate = prior && prior.started === started && bytes >= prior.bytes && now > prior.at
             ? 8 * (bytes - prior.bytes) / ((now - prior.at) / 1000) / 1_000_000 : null;
         liveSamples.set(stream.code, { bytes, started, at: now, lastChange });
-        if (!(bytes > 0)) return { text: "Connected, waiting for data", style: "connected", rate };
-        if (now - lastChange >= 8000) return { text: "Connected, no recent data", style: "connected", rate };
-        return { text: "Receiving data", style: "receiving", rate };
+        if (!(bytes > 0) || now - lastChange >= 8000)
+            return { text: "Ready", detail: "Ready, waiting for feed", style: "ready", rate };
+        return { text: "Active", detail: "Receiving data", style: "active", rate };
     }
 
     const remoteRoleAbbreviations = {
@@ -152,7 +170,7 @@
         "technical-specialist-2": "TS2",
         judging: "J",
         referee: "Ref",
-        "data-specialist": "DS",
+        "data-specialist": "ET",
         announcer: "Ann",
         "data-input-operator": "DIO",
         "video-replay-operator": "VRO",
@@ -167,24 +185,31 @@
         return roles.length ? `${total} · ${roles.join(" · ")}` : String(total);
     }
 
+    function rtspViewerSummary(stream) {
+        const viewers = stream.rtspViewers || [];
+        return viewers.length
+            ? viewers.map(viewer => `${esc(viewer.user || "Unknown")} · ${esc(viewer.ipAddress || "Unknown IP")}`).join("<br>")
+            : "None";
+    }
+
     async function loadLiveStatuses(forceAfterCurrent = false) {
         if (liveStatusLoading) {
             if (forceAfterCurrent) liveStatusReloadPending = true;
             return;
         }
-        if ($("keysView").classList.contains("hidden") ||
-            $("liveStatusPanel").classList.contains("hidden")) return;
+        if ($("liveStreamsView").classList.contains("hidden")) return;
         liveStatusLoading = true;
         try {
             const snapshot = await api("/api/manage/live-streams");
             const now = Date.now();
             const streams = snapshot.streams || [];
-            let receiving = 0, waiting = 0, active = 0;
+            const streamCodes = new Set(streams.map(stream => stream.code));
+            for (const code of expandedLiveStreams)
+                if (!streamCodes.has(code)) expandedLiveStreams.delete(code);
+            const statusCounts = { active: 0, ready: 0, paused: 0 };
             $("liveStatusList").innerHTML = streams.map(stream => {
                 const state = liveStatusLabel(stream, snapshot.available, now);
-                if (stream.active !== false) active++;
-                if (state.style === "receiving") receiving++;
-                if (state.style === "waiting") waiting++;
+                statusCounts[state.style]++;
                 const started = stream.startedAtUtc
                     ? new Date(stream.startedAtUtc).toLocaleString() : "—";
                 const resolution = stream.width && stream.height
@@ -194,17 +219,32 @@
                     : state.rate == null ? "Measuring…" : `${state.rate.toFixed(2)} Mbps`;
                 const received = stream.totalBytes == null ? "—" : formatStorageSize(stream.totalBytes);
                 const feedActive = stream.active !== false;
-                return `<article class="liveStreamCard"><div class="liveStreamCardHeader"><strong>${esc(stream.code)}</strong>` +
-                    `<button type="button" class="liveFeedToggle ${feedActive ? "active" : "paused"}" data-live-code="${esc(stream.code)}" data-live-active="${feedActive}" aria-pressed="${feedActive}" title="${feedActive ? "Pause this live feed" : "Activate this live feed"}">${feedActive ? "Active" : "Paused"}</button></div>` +
-                    `<div class="liveConnectionLine"><span class="liveStreamState ${state.style}">${esc(state.text)}</span></div>` +
-                    `<dl class="liveStreamFacts"><dt>VRO</dt><dd class="${stream.vroConnected ? "connectionUp" : "connectionDown"}">${stream.vroConnected ? "Connected" : "Disconnected"}</dd>` +
-                    `<dt>Clients</dt><dd>${esc(remoteClientSummary(stream))}</dd><dt>Started</dt><dd>${esc(started)}</dd>` +
+                const publicRtspEnabled = stream.publicRtspEnabled === true;
+                const expanded = expandedLiveStreams.has(stream.code);
+                const activity = state.style === "active"
+                    ? `<p class="liveReceivingIndicator"><span class="liveReceivingLight" aria-hidden="true"></span>Receiving data</p>`
+                    : `<p class="liveStreamDescription">${esc(state.detail)}</p>`;
+                const startedSummary = stream.startedAtUtc
+                    ? `<p class="liveStreamStarted"><span>Started</span><time datetime="${esc(stream.startedAtUtc)}">${esc(started)}</time></p>`
+                    : "";
+                return `<article class="liveStreamCard"><div class="liveStreamCardHeader"><div class="liveStreamIdentity"><span>Rink ID</span><strong>${esc(stream.code)}</strong></div>` +
+                    `<span class="liveStatusBadge ${state.style}">${esc(state.text)}</span></div>` +
+                    activity + startedSummary +
+                    `<button type="button" class="small secondary livePreviewButton" data-live-preview="${esc(stream.code)}" ${feedActive && stream.ready && snapshot.available ? "" : "disabled"}>Preview</button>` +
+                    `<details class="liveStreamDisclosure" data-live-details="${esc(stream.code)}" ${expanded ? "open" : ""}><summary><span class="showDetailsLabel">Show details</span><span class="hideDetailsLabel">Hide details</span></summary>` +
+                    `<div class="liveStreamDetails"><dl class="liveStreamFacts"><dt>VRO</dt><dd class="${stream.vroConnected ? "connectionUp" : "connectionDown"}">${stream.vroConnected ? "Connected" : "Disconnected"}</dd>` +
+                    `<dt>Clients</dt><dd>${esc(remoteClientSummary(stream))}</dd>` +
+                    `<dt>RTSP viewers</dt><dd>${rtspViewerSummary(stream)}</dd>` +
                     `<dt>Resolution</dt><dd>${esc(resolution)}</dd><dt>Codecs</dt><dd>${esc(codecs)}</dd>` +
                     `<dt>Receive rate</dt><dd>${esc(rate)}</dd><dt>Total received</dt><dd>${esc(received)}</dd></dl>` +
-                    `<button type="button" class="small secondary livePreviewButton" data-live-preview="${esc(stream.code)}" ${feedActive && stream.ready && snapshot.available ? "" : "disabled"}>Preview</button></article>`;
-            }).join("");
-            $("liveStatusSummary").textContent = snapshot.available
-                ? `${active} active · ${streams.length - active} paused · ${receiving} receiving${waiting ? ` · ${waiting} waiting` : ""}`
+                    `<div class="liveStreamActions"><button type="button" class="small secondary liveFeedToggle" data-live-code="${esc(stream.code)}" data-live-active="${feedActive}">${feedActive ? "Pause feed" : "Resume feed"}</button>` +
+                    `<div class="publicRtspCardControl"><label class="publicRtspToggle"><input type="checkbox" data-public-rtsp-toggle="${esc(stream.code)}" data-public-rtsp-enabled="${publicRtspEnabled}" ${publicRtspEnabled ? "checked" : ""}>RTSP Relay</label>` +
+                    `<button type="button" class="small secondary" data-public-rtsp-settings="${esc(stream.code)}">Settings</button></div></div></div></details></article>`;
+            }).join("") || '<p class="emptyState">No Live Rink IDs have been created.</p>';
+            $("liveStatusSummary").textContent = streams.length === 0
+                ? "Create a Live Rink ID to begin monitoring a stream."
+                : snapshot.available
+                ? `${statusCounts.active} Active · ${statusCounts.ready} Ready · ${statusCounts.paused} Paused`
                 : "Stream monitoring is unavailable. Check the MediaMTX control API.";
             $("liveStatusUpdated").textContent = `Updated ${new Date(now).toLocaleTimeString()}`;
         } catch {
@@ -257,9 +297,44 @@
         }
     }
 
+    async function openPublicRtspSettings(code, requestedEnabled = null) {
+        try {
+            const settings = await api(`/api/manage/keys/${encodeURIComponent(code)}/media`);
+            const canReveal = settings.publicRtspPasswordCanBeRevealed !== false;
+            savedPublicRtspPassword = canReveal && typeof settings.publicRtspPassword === "string"
+                ? settings.publicRtspPassword : "";
+            savedPublicRtspHasPassword = settings.hasPublicRtspPassword === true;
+            const enabled = requestedEnabled ?? settings.publicRtspEnabled === true;
+            const passwordInput = $("publicRtspPassword");
+            $("publicRtspForm").dataset.code = code;
+            $("publicRtspTitle").textContent = `${code} RTSP Relay`;
+            $("publicRtspEnabled").checked = enabled;
+            $("publicRtspUrl").textContent = `rtsp://${location.hostname}/${code}`;
+            passwordInput.value = savedPublicRtspPassword;
+            passwordInput.placeholder = savedPublicRtspHasPassword && !savedPublicRtspPassword
+                ? "••••••••" : "Required when enabled";
+            passwordInput.required = enabled && !savedPublicRtspHasPassword;
+            setPublicRtspPasswordVisibility(false);
+            $("copyPublicRtspUrl").disabled = !settings.publicRtspEnabled || !savedPublicRtspPassword;
+            $("publicRtspCopyFeedback").textContent = "";
+            msg("", false, "publicRtspMessage");
+            $("publicRtspDialog").showModal();
+        } catch (error) {
+            msg(error.message);
+        }
+    }
+
     function setKeyPasswordVisibility(visible) {
-        const input = $("keyPublishPassword");
-        const button = $("toggleKeyPublishPassword");
+        setPasswordVisibility("keyPublishPassword", "toggleKeyPublishPassword", visible);
+    }
+
+    function setPublicRtspPasswordVisibility(visible) {
+        setPasswordVisibility("publicRtspPassword", "togglePublicRtspPassword", visible);
+    }
+
+    function setPasswordVisibility(inputId, buttonId, visible) {
+        const input = $(inputId);
+        const button = $(buttonId);
         input.type = visible ? "text" : "password";
         button.setAttribute("aria-label", visible ? "Hide password" : "Show password");
         button.title = visible ? "Hide password" : "Show password";
@@ -271,18 +346,14 @@
         const input = $("keyPublishPassword");
         const hasPassword = settings.hasPublishPassword ?? key.hasPublishPassword;
         const canReveal = settings.passwordCanBeRevealed !== false;
-        input.value = canReveal && typeof settings.publishPassword === "string"
+        savedPublishPassword = canReveal && typeof settings.publishPassword === "string"
             ? settings.publishPassword : "";
-        input.placeholder = hasPassword && !input.value ? "••••••••" : "Enter a password (optional)";
+        input.value = savedPublishPassword;
+        input.placeholder = hasPassword && !input.value ? "••••••••" : "Required";
         setKeyPasswordVisibility(false);
         $("keyMediaForm").dataset.passwordCanBeRevealed = String(canReveal);
         $("toggleKeyPublishPassword").disabled = hasPassword && !canReveal && !input.value;
-        $("removeKeyPublishPassword").classList.toggle("hidden", !hasPassword);
-        $("keyMediaPasswordHint").textContent = hasPassword && !canReveal
-            ? "This password predates reveal support and cannot be recovered. Enter and save a replacement once to enable Show password."
-            : hasPassword
-            ? "The current password is loaded. Use the eye to show it, or edit it and Save."
-            : "Enter a password to protect this RTMP feed, or leave this blank for no password.";
+        $("copyKeyRtmpUrl").disabled = !savedPublishPassword;
     }
 
     function renderVideos() {
@@ -883,7 +954,27 @@
         } catch (error) { msg(error.message); }
     };
 
+    $("liveStatusList").addEventListener("toggle", event => {
+        const details = event.target.closest("[data-live-details]");
+        if (!details) return;
+        if (details.open) expandedLiveStreams.add(details.dataset.liveDetails);
+        else expandedLiveStreams.delete(details.dataset.liveDetails);
+    }, true);
+
     $("liveStatusList").onclick = async event => {
+        const publicRtspToggle = event.target.closest("[data-public-rtsp-toggle]");
+        if (publicRtspToggle) {
+            const code = publicRtspToggle.dataset.publicRtspToggle;
+            const requestedEnabled = publicRtspToggle.checked;
+            publicRtspToggle.checked = publicRtspToggle.dataset.publicRtspEnabled === "true";
+            if (code) await openPublicRtspSettings(code, requestedEnabled);
+            return;
+        }
+        const publicRtspSettings = event.target.closest("[data-public-rtsp-settings]");
+        if (publicRtspSettings) {
+            await openPublicRtspSettings(publicRtspSettings.dataset.publicRtspSettings);
+            return;
+        }
         const toggle = event.target.closest("[data-live-active]");
         if (toggle) {
             const code = toggle.dataset.liveCode;
@@ -910,6 +1001,51 @@
     };
     $("closeLivePreview").onclick = () => $("livePreviewDialog").close();
     $("livePreviewDialog").addEventListener("close", stopLivePreview);
+    $("closePublicRtsp").onclick = () => $("publicRtspDialog").close();
+    $("togglePublicRtspPassword").onclick = () =>
+        setPublicRtspPasswordVisibility($("publicRtspPassword").type === "password");
+    $("publicRtspEnabled").onchange = () => {
+        $("publicRtspPassword").required = $("publicRtspEnabled").checked && !savedPublicRtspHasPassword;
+    };
+    $("copyPublicRtspUrl").onclick = async () => {
+        if (!savedPublicRtspPassword) return;
+        const code = $("publicRtspForm").dataset.code;
+        const url = `rtsp://viewer:${encodeURIComponent(savedPublicRtspPassword)}@${location.hostname}/${encodeURIComponent(code)}`;
+        try {
+            await copyText(url);
+            $("publicRtspCopyFeedback").textContent = "Copied to clipboard (including the password).";
+        } catch {
+            $("publicRtspCopyFeedback").textContent = "Could not copy the URL. Select it and copy it manually.";
+        }
+    };
+    $("publicRtspForm").onsubmit = async event => {
+        event.preventDefault();
+        const code = $("publicRtspForm").dataset.code;
+        const enabled = $("publicRtspEnabled").checked;
+        const password = $("publicRtspPassword").value;
+        if (enabled && !password && !savedPublicRtspHasPassword) {
+            $("publicRtspPassword").reportValidity();
+            return;
+        }
+        try {
+            await api(`/api/manage/keys/${encodeURIComponent(code)}/media`, {
+                method: "PUT",
+                body: JSON.stringify({
+                    publicRtspEnabled: enabled,
+                    publicRtspPassword: password && password !== savedPublicRtspPassword ? password : null
+                })
+            });
+            if (password) savedPublicRtspPassword = password;
+            savedPublicRtspHasPassword = savedPublicRtspHasPassword || Boolean(password);
+            $("publicRtspPassword").required = enabled && !savedPublicRtspHasPassword;
+            $("copyPublicRtspUrl").disabled = !enabled || !savedPublicRtspPassword;
+            $("publicRtspCopyFeedback").textContent = "";
+            await loadLiveStatuses(true);
+            msg(`RTSP Relay ${enabled ? "enabled" : "disabled"}.`, true, "publicRtspMessage");
+        } catch (error) {
+            msg(error.message, false, "publicRtspMessage");
+        }
+    };
     $("closeEncoderSettings").onclick = () => $("encoderSettingsDialog").close();
     $("copyEncoderSettings").onclick = async () => {
         const settings = [
@@ -925,18 +1061,7 @@
             "Audio: AAC-LC, 48 kHz, stereo, 128 kbps"
         ].join("\n");
         try {
-            if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(settings);
-            else {
-                const input = document.createElement("textarea");
-                input.value = settings;
-                input.style.position = "fixed";
-                input.style.opacity = "0";
-                document.body.append(input);
-                input.select();
-                const copied = document.execCommand("copy");
-                input.remove();
-                if (!copied) throw new Error("Clipboard unavailable");
-            }
+            await copyText(settings);
             $("copyEncoderSettingsLabel").textContent = "Copied";
             window.setTimeout(() => $("copyEncoderSettingsLabel").textContent = "Copy settings", 1600);
         } catch {
@@ -952,41 +1077,12 @@
         const legacyPassword = $("keyMediaForm").dataset.passwordCanBeRevealed === "false";
         $("toggleKeyPublishPassword").disabled = legacyPassword && !$("keyPublishPassword").value;
     };
-    $("removeKeyPublishPassword").onclick = async () => {
-        const code = $("keyMediaForm").dataset.code;
-        if (!code || !confirm(`Remove the RTMP publish password from ${code}?`)) return;
-        try {
-            await api(`/api/manage/keys/${encodeURIComponent(code)}/media`, {
-                method: "PUT", body: JSON.stringify({ publishPassword: "" })
-            });
-            const key = keys.find(item => item.code === code);
-            if (key) {
-                key.hasPublishPassword = false;
-                prepareKeyPasswordEditor(key, {
-                    hasPublishPassword: false,
-                    publishPassword: "",
-                    passwordCanBeRevealed: true
-                });
-            }
-            msg("Publish password removed.", true, "keyMediaMessage");
-        } catch (error) { msg(error.message, false, "keyMediaMessage"); }
-    };
     $("copyKeyRtmpUrl").onclick = async () => {
-        const url = $("keyRtmpUrl").textContent;
+        if (!savedPublishPassword) return;
+        const url = `${$("keyRtmpUrl").textContent}?pass=${encodeURIComponent(savedPublishPassword)}`;
         try {
-            if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(url);
-            else {
-                const input = document.createElement("textarea");
-                input.value = url;
-                input.style.position = "fixed";
-                input.style.opacity = "0";
-                document.body.append(input);
-                input.select();
-                const copied = document.execCommand("copy");
-                input.remove();
-                if (!copied) throw new Error("Clipboard unavailable");
-            }
-            $("keyCopyFeedback").textContent = "Copied to clipboard.";
+            await copyText(url);
+            $("keyCopyFeedback").textContent = "Copied to clipboard (including the password).";
         } catch {
             $("keyCopyFeedback").textContent = "Could not copy the URL. Select it and copy it manually.";
         }
@@ -995,7 +1091,7 @@
         event.preventDefault();
         const code = $("keyMediaForm").dataset.code;
         const enteredPassword = $("keyPublishPassword").value;
-        const body = { publishPassword: enteredPassword.length ? enteredPassword : null };
+        const body = { publishPassword: enteredPassword };
         try {
             await api(`/api/manage/keys/${encodeURIComponent(code)}/media`, {
                 method: "PUT", body: JSON.stringify(body)
@@ -1226,7 +1322,7 @@
             void loadStorageStatus();
     }, 30000);
     window.setInterval(() => {
-        if (!document.hidden && !$("keysView").classList.contains("hidden"))
+        if (!document.hidden && !$("liveStreamsView").classList.contains("hidden"))
             void loadLiveStatuses();
     }, 3000);
     start();

@@ -1583,14 +1583,20 @@ public sealed partial class RemoteSessionStore
         var vroConnected = !string.IsNullOrWhiteSpace(state.OperatorInstanceId) &&
             !string.Equals(state.Mode, "operator-offline", StringComparison.OrdinalIgnoreCase) &&
             state.OperatorLeaseExpiresAtUnixMs > nowUnixMs;
-        var roles = _subscribers.TryGetValue(sessionCode, out var subscribers)
+        var roles = GetRemoteViewerRoleCounts(sessionCode);
+        return new RemoteConnectionStatus(vroConnected, roles.Sum(role => role.Count), roles);
+    }
+
+    public RemoteViewerRoleCount[] GetRemoteViewerRoleCounts(string sessionCode)
+    {
+        sessionCode = RequireSessionCode(sessionCode);
+        return _subscribers.TryGetValue(sessionCode, out var subscribers)
             ? subscribers.Values
                 .GroupBy(subscriber => subscriber.Role, StringComparer.Ordinal)
                 .OrderBy(group => RemoteViewerRoles.SortOrder(group.Key))
                 .Select(group => new RemoteViewerRoleCount(group.Key, group.Count()))
                 .ToArray()
             : Array.Empty<RemoteViewerRoleCount>();
-        return new RemoteConnectionStatus(vroConnected, roles.Sum(role => role.Count), roles);
     }
 
     private void Broadcast(string sessionCode, PlaybackState state)
