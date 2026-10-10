@@ -55,7 +55,7 @@
         en: {
             language: "Language", waitingForRinkId: "Waiting for a Rink ID and role.", volume: "Volume", mute: "Mute",
             videoVolume: "Video volume", rinkId: "Rink ID", rinkIdInput: "Six-character Rink ID", role: "Role", refresh: "Refresh",
-            viewerRole: "Viewer role", noRole: "No role", selectRole: "Select a role", announcer: "Announcer", dataInputOperator: "Data Input Operator", dataSpecialist: "Event Technician", judge: "Judge", referee: "Referee", technicalSpecialist1: "Technical Specialist 1", technicalSpecialist2: "Technical Specialist 2", technicalController: "Technical Controller", videoReplayOperator: "Video Replay Operator",
+            viewerRole: "Viewer role", noRole: "No role", selectRole: "Select a role", announcer: "Announcer", dataInputOperator: "Data Input Operator", dataSpecialist: "Service Technician", judge: "Judge", observerJudge: "Observer-Judge", observerTech: "Observer-Tech", referee: "Referee", technicalSpecialist: "Technical Specialist", technicalController: "Technical Controller",
             remotePlayer: "Passive remote replay player", enterRinkId: "Welcome to ReVue-Remote\nEnter a Rink ID and select a role", waitingForVideo: "Stand by for video...", noSignal: "NO SIGNAL", standBy: "STAND BY", playTestTone: "Sound check", stopTestTone: "Sound off", testToneUnavailable: "Audio test unavailable", testToneVolume: "Volume: {percent}%", audioMuted: "Audio is muted", operatorOffline: "ReVue VRO connection lost.", play: "Play", pause: "Pause",
             playVideo: "Play video", pauseVideo: "Pause video", setStopwatchZero: "Set stopwatch zero",
             clearStopwatch: "Clear stopwatch", videoTimeline: "Video timeline", videoPlaybackPosition: "Video playback position",
@@ -83,7 +83,7 @@
         fr: {
             language: "Langue", waitingForRinkId: "En attente d’un ID de patinoire et d’un rôle.", volume: "Volume", mute: "Muet",
             videoVolume: "Volume de la vidéo", rinkId: "ID de patinoire", rinkIdInput: "ID de patinoire à six caractères", role: "Rôle", refresh: "Actualiser",
-            viewerRole: "Rôle du spectateur", noRole: "Aucun rôle", selectRole: "Sélectionnez un rôle", announcer: "Annonceur", dataInputOperator: "Le RED (DIO)", dataSpecialist: "Technicien d’événement", judge: "Juge", referee: "Arbitre", technicalSpecialist1: "Spécialiste technique 1", technicalSpecialist2: "Spécialiste technique 2", technicalController: "Contrôleur technique", videoReplayOperator: "Opérateur de reprise vidéo",
+            viewerRole: "Rôle du spectateur", noRole: "Aucun rôle", selectRole: "Sélectionnez un rôle", announcer: "Annonceur", dataInputOperator: "Le RED (DIO)", dataSpecialist: "Technicien de service", judge: "Juge", observerJudge: "Observateur-Juge", observerTech: "Observateur-Tech", referee: "Arbitre", technicalSpecialist: "Spécialiste technique", technicalController: "Contrôleur technique",
             remotePlayer: "Lecteur de reprise à distance", enterRinkId: "Bienvenue dans ReVue-Remote\nSaisissez un ID de patinoire et sélectionnez un rôle", waitingForVideo: "En attente de la vidéo…", noSignal: "AUCUN SIGNAL", standBy: "EN ATTENTE", playTestTone: "Test sonore", stopTestTone: "Couper le son", testToneUnavailable: "Test audio indisponible", testToneVolume: "Volume : {percent} %", audioMuted: "Le son est coupé", operatorOffline: "Connexion à ReVue VRO perdue.", play: "Lire", pause: "Pause",
             playVideo: "Lire la vidéo", pauseVideo: "Mettre la vidéo en pause", setStopwatchZero: "Remettre le chronomètre à zéro",
             clearStopwatch: "Effacer le chronomètre", videoTimeline: "Chronologie de la vidéo", videoPlaybackPosition: "Position de lecture de la vidéo",
@@ -140,25 +140,25 @@
         "data-input-operator": "dataInputOperator",
         "data-specialist": "dataSpecialist",
         judging: "judge",
+        "observer-judge": "observerJudge",
+        "observer-tech": "observerTech",
         referee: "referee",
-        "technical-specialist-1": "technicalSpecialist1",
-        "technical-specialist-2": "technicalSpecialist2",
-        "technical-controller": "technicalController",
-        "video-replay-operator": "videoReplayOperator"
+        "technical-specialist": "technicalSpecialist",
+        "technical-controller": "technicalController"
     };
     const connectedClientRoleBadges = {
         "technical-controller": { abbreviation: "TC", label: "technicalController" },
-        "technical-specialist-1": { abbreviation: "TS1", label: "technicalSpecialist1" },
-        "technical-specialist-2": { abbreviation: "TS2", label: "technicalSpecialist2" },
+        "technical-specialist": { abbreviation: "TS", label: "technicalSpecialist" },
         judging: { abbreviation: "J", label: "judge" },
+        "observer-judge": { abbreviation: "OJ", label: "observerJudge" },
+        "observer-tech": { abbreviation: "OT", label: "observerTech" },
         referee: { abbreviation: "Ref", label: "referee" },
-        "data-specialist": { abbreviation: "ET", label: "dataSpecialist" },
+        "data-specialist": { abbreviation: "ST", label: "dataSpecialist" },
         announcer: { abbreviation: "Ann", label: "announcer" },
         "data-input-operator": { abbreviation: "DIO", label: "dataInputOperator" }
     };
     const technicalPanelTypes = new Set([
-        "data-input-operator", "technical-specialist-1", "technical-specialist-2",
-        "technical-controller", "video-replay-operator"
+        "data-input-operator", "technical-specialist", "technical-controller", "observer-tech"
     ]);
     let panelType = "";
 

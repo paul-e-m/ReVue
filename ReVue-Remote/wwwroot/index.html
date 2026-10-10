@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>ReVue-Remote</title>
-        <link rel="stylesheet" href="styles.css?v=20261006-blank-role-option" />
+        <link rel="stylesheet" href="styles.css?v=20261008-observer-roles" />
 </head>
 <body>
     <div id="pageFrame" class="pageFrame">
@@ -43,13 +43,13 @@
                         <div id="panelTypeMenu" class="panelTypeMenu hidden" role="listbox" aria-label="Viewer panel type" data-i18n-aria="viewerRole">
                             <button type="button" role="option" data-panel-type="announcer" data-i18n="announcer">Announcer</button>
                             <button type="button" role="option" data-panel-type="data-input-operator" data-i18n="dataInputOperator">Data Input Operator</button>
-                            <button type="button" role="option" data-panel-type="data-specialist" data-i18n="dataSpecialist">Event Technician</button>
+                            <button type="button" role="option" data-panel-type="data-specialist" data-i18n="dataSpecialist">Service Technician</button>
                             <button type="button" role="option" data-panel-type="judging" data-i18n="judge">Judge</button>
+                            <button type="button" role="option" data-panel-type="observer-judge" data-i18n="observerJudge">Observer-Judge</button>
+                            <button type="button" role="option" data-panel-type="observer-tech" data-i18n="observerTech">Observer-Tech</button>
                             <button type="button" role="option" data-panel-type="referee" data-i18n="referee">Referee</button>
                             <button type="button" role="option" data-panel-type="technical-controller" data-i18n="technicalController">Technical Controller</button>
-                            <button type="button" role="option" data-panel-type="technical-specialist-1" data-i18n="technicalSpecialist1">Technical Specialist 1</button>
-                            <button type="button" role="option" data-panel-type="technical-specialist-2" data-i18n="technicalSpecialist2">Technical Specialist 2</button>
-                            <button type="button" role="option" data-panel-type="video-replay-operator" data-i18n="videoReplayOperator">Video Replay Operator</button>
+                            <button type="button" role="option" data-panel-type="technical-specialist" data-i18n="technicalSpecialist">Technical Specialist</button>
                             <button type="button" role="option" data-panel-type="" aria-label="No role" data-i18n-aria="noRole"></button>
                         </div>
                     </fieldset>
@@ -159,6 +159,6 @@ Enter a Rink ID and select a role</span>
     </div>
 
     <script src="hls.min.js?v=1.6.13"></script>
-    <script src="app.js?v=20261006-blank-role-option"></script>
+    <script src="app.js?v=20261010-service-technician"></script>
 </body>
 </html>

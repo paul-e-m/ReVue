@@ -2079,8 +2079,8 @@ public static class RemoteViewerRoles
 {
     private static readonly string[] Values =
     [
-        "technical-controller", "technical-specialist-1", "technical-specialist-2",
-        "judging", "referee", "data-specialist", "announcer",
+        "technical-controller", "technical-specialist", "observer-tech", "judging",
+        "observer-judge", "referee", "data-specialist", "announcer",
         "data-input-operator", "video-replay-operator", "unknown"
     ];
 

@@ -505,6 +505,7 @@ video {
 video[data-viewer-role="announcer"],
 video[data-viewer-role="data-specialist"],
 video[data-viewer-role="judging"],
+video[data-viewer-role="observer-judge"],
 video[data-viewer-role="referee"] {
     transform: none !important;
 }

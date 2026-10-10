@@ -166,11 +166,12 @@
 
     const remoteRoleAbbreviations = {
         "technical-controller": "TC",
-        "technical-specialist-1": "TS1",
-        "technical-specialist-2": "TS2",
+        "technical-specialist": "TS",
+        "observer-tech": "OT",
+        "observer-judge": "OJ",
         judging: "J",
         referee: "Ref",
-        "data-specialist": "ET",
+        "data-specialist": "ST",
         announcer: "Ann",
         "data-input-operator": "DIO",
         "video-replay-operator": "VRO",
