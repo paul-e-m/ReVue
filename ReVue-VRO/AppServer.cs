@@ -15,6 +15,8 @@ using ReVueJudge.Models;
 using ReVueVRO.Models;
 using ReVueVRO.Services;
 using ReVueVRO.Shell;
+using ReVue.Diagnostics;
+using Microsoft.Extensions.Logging;
 
 namespace ReVueVRO.Hosting;
 
@@ -53,6 +55,7 @@ public static class AppServer
             ContentRootPath = ResolveContentRoot(),
         });
         builder.WebHost.UseUrls(ListenUrl);
+        builder.Logging.AddProvider(new RuntimeLogProvider());
         builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = null);
         builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(options =>
         {
@@ -111,6 +114,7 @@ public static class AppServer
             int statusCode,
             string? diagnosticDetail = null)
         {
+            RuntimeLog.Write("Warning", "Recording", $"Start rejected; code={errorCode}; status={statusCode}; {detail}; {diagnosticDetail}");
             var extensions = new Dictionary<string, object?>
             {
                 ["errorCode"] = errorCode
@@ -241,6 +245,36 @@ public static class AppServer
             return providedTokenBytes.Length == expectedTokenBytes.Length &&
                 CryptographicOperations.FixedTimeEquals(providedTokenBytes, expectedTokenBytes);
         }
+
+        app.Use(async (http, next) =>
+        {
+            var started = Stopwatch.GetTimestamp();
+            // Known endpoint patterns only: no request queries, headers, bodies, or client IPs.
+            var endpoint = (http.GetEndpoint() as Microsoft.AspNetCore.Routing.RouteEndpoint)?.RoutePattern.RawText ?? "unmatched";
+            try
+            {
+                await next();
+                var elapsed = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+                if (http.Response.StatusCode >= 400 ||
+                    (elapsed >= 2000 && endpoint.StartsWith("/api/", StringComparison.Ordinal) && endpoint != "/api/recording/file"))
+                    RuntimeLog.Write("Warning", "HTTP", $"{http.Request.Method} {endpoint}; status={http.Response.StatusCode}; elapsedMs={elapsed:F0}; request={http.TraceIdentifier}");
+                else if (HttpMethods.IsPost(http.Request.Method) &&
+                    (endpoint.StartsWith("/api/record/", StringComparison.Ordinal) ||
+                     endpoint.StartsWith("/api/replay/", StringComparison.Ordinal) ||
+                     endpoint is "/api/session/clear" or "/api/appconfig" or "/api/app/restart"))
+                    RuntimeLog.Write("Information", "Operator", $"{endpoint}; status={http.Response.StatusCode}; elapsedMs={elapsed:F0}; request={http.TraceIdentifier}");
+            }
+            catch (OperationCanceledException) when (http.RequestAborted.IsCancellationRequested)
+            {
+                RuntimeLog.Write("Information", "HTTP", $"Request cancelled: {http.Request.Method} {endpoint}; request={http.TraceIdentifier}");
+                throw;
+            }
+            catch (Exception ex)
+            {
+                RuntimeLog.Write("Error", "HTTP", $"Request failed: {http.Request.Method} {endpoint}; request={http.TraceIdentifier}", ex);
+                throw;
+            }
+        });
 
         app.Use(async (http, next) =>
         {
@@ -1418,10 +1452,20 @@ public static class AppServer
         app.MapPost("/api/remote/playback", async (
             LocalRemotePlaybackCommand command,
             RemotePlaybackManager remote,
+            SessionManager session,
             HttpContext http) =>
         {
             var cfg = LoadConfig();
             if (!RemotePlaybackManager.IsRemoteMode(cfg))
+                return Results.Ok(new { ignored = true });
+            // The page can report a late replay update after Next Competitor
+            // (for example, from resetting zoom while it still shows replay).
+            // Publishing it would replace the idle heartbeat with a command
+            // for a cleared event, so Remote would report the VRO as offline.
+            var replayUpdateAllowed = string.Equals(session.Mode, "replay", StringComparison.OrdinalIgnoreCase);
+            var recordingUpdateAllowed = session.IsRecording &&
+                string.Equals(command.Mode, "recording", StringComparison.OrdinalIgnoreCase);
+            if (!replayUpdateAllowed && !recordingUpdateAllowed)
                 return Results.Ok(new { ignored = true });
 
             try

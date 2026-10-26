@@ -182,6 +182,36 @@ During recording, ReVue VRO produces two replay MP4 files in parallel under `%Lo
 
 When `UseHardwareEncodingWhenAvailable` is enabled and a supported encoder is available, both replay files use hardware encoding. Otherwise both files use software encoding.
 
+## Troubleshooting Logs
+
+ReVue VRO and ReVue Judge automatically write local diagnostic logs when the updated apps run. No setting or external service is required. On each computer, paste the appropriate path into Windows File Explorer:
+
+```text
+%LocalAppData%\ReVue\ReVue-VRO\logs\
+%LocalAppData%\ReVue\ReVue-Judge\logs\
+```
+
+Files named `revue-<UTC timestamp>-<run ID>-<part>.jsonl` contain one JSON object per line with UTC time, severity, component, message, and optional exception details. A fresh run ID identifies each app launch; recording messages also contain a recording ID. Startup records include the app version, OS, and .NET runtime.
+
+VRO logs recording/encoder selection, time to first frame, FFmpeg warnings, unexpected exits, frame progress every 30 seconds, a warning after 10 seconds without advancing frame progress, and recovery when progress resumes. It also logs recording stop, replay preparation, export failures, MediaMTX output/exits, CSS helper lifecycle, Remote synchronization failures/recovery, operator recording/replay actions, failed HTTP requests, and slow API requests. Judge logs startup, WebView2 failures, failed UI/API actions, and replay range/cache failures. Frame monitoring is observational; it does not restart or alter a recording. Routine status polling and successful media transfers are omitted.
+
+Storage and performance safeguards:
+
+- Files rotate at 1 MiB and on the next write after a UTC date change. Logs older than 14 days are deleted automatically. Each app's log folder is limited to 32 MiB and 64 files; oldest logs are removed first, so busy sessions may have shorter retention.
+- Cleanup runs at startup, at file rotation, and every five minutes while the app is open, including idle periods. If an app stays closed, its old logs are cleaned up on its next launch.
+- A background worker handles log file I/O, JSON serialization, and redaction. The queue holds at most 512 entries; message and exception text are truncated to about 2,048 characters each. Callers never wait for queue capacity or log storage. Pressure may drop diagnostic entries; omissions are reported when writing resumes.
+- Logging pauses when its drive has less than 250 MiB free, when storage is unavailable, or when old files cannot be removed to make room. Storage is retried after one minute. Free space is checked at each file opening and at least once a minute during writes. These safeguards reserve headroom for normal operation; they do not replace free-space management for recordings.
+- Normal shutdown allows at most 750 ms to drain logs. A forced crash, power loss, or hung/full disk may lose recent entries. Logging failures do not change app error handling or recording state.
+- Logs do not include configuration snapshots, request headers/bodies/query strings, or deliberate competitor metadata. URL and common secret patterns are redacted from text. Tool output and exceptions can still include local file paths; review files before sharing them.
+
+For troubleshooting, copy the recent VRO logs and the affected Judge computer's logs promptly, before retention removes them. Include the approximate local time of the incident, which app was affected, source mode, what the operator was doing, and any displayed error. Keep all parts with the same run ID to preserve the timeline. Logs are local and are never uploaded automatically.
+
+The logging fault/stress checks can run on Windows or macOS with the .NET 10 SDK:
+
+```text
+dotnet run --project tests/Diagnostics/Diagnostics.Tests.csproj
+```
+
 ## App Configuration
 
 The app currently reads and writes these canonical `AppConfig` fields:

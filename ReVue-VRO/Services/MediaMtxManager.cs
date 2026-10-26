@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Hosting;
 using System.Diagnostics;
 using System.Text;
 using ReVueVRO.Models;
+using ReVue.Diagnostics;
 
 namespace ReVueVRO.Services;
 
@@ -109,28 +110,49 @@ public class MediaMtxManager
                 Arguments = $"\"{cfg}\"",
                 WorkingDirectory = _toolsDir,
                 UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
                 CreateNoWindow = true
             },
             EnableRaisingEvents = true
         };
-        _proc.Start();
+        var process = _proc;
+        process.OutputDataReceived += (_, e) =>
+        {
+            if (!string.IsNullOrWhiteSpace(e.Data)) RuntimeLog.Write("Information", "MediaMTX", e.Data);
+        };
+        process.ErrorDataReceived += (_, e) =>
+        {
+            if (!string.IsNullOrWhiteSpace(e.Data)) RuntimeLog.Write("Warning", "MediaMTX", e.Data);
+        };
+        process.Exited += (_, _) =>
+        {
+            if (!ReferenceEquals(Volatile.Read(ref _proc), process)) return;
+            try { RuntimeLog.Write("Error", "MediaMTX", $"Relay exited unexpectedly; exitCode={process.ExitCode}"); }
+            catch { }
+        };
+        process.Start();
+        process.BeginOutputReadLine();
+        process.BeginErrorReadLine();
+        RuntimeLog.Write("Information", "MediaMTX", $"Relay started; pid={process.Id}");
     }
 
     private void Stop_NoLock()
     {
+        var process = _proc;
+        _proc = null; // Mark expected stop before killing or waiting for exit callbacks.
         try
         {
-            if (_proc == null) return;
-            if (_proc.HasExited) { _proc.Dispose(); _proc = null; return; }
+            if (process == null || process.HasExited) return;
 
-            _proc.Kill(entireProcessTree: true);
-            _proc.WaitForExit(2000);
+            RuntimeLog.Write("Information", "MediaMTX", "Relay stop requested.");
+            process.Kill(entireProcessTree: true);
+            process.WaitForExit(2000);
         }
         catch { /* best-effort */ }
         finally
         {
-            _proc?.Dispose();
-            _proc = null;
+            process?.Dispose();
         }
     }
 

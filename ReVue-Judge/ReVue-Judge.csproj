@@ -6,8 +6,8 @@
     <AssemblyName>ReVue-Judge</AssemblyName>
     <AssemblyTitle>ReVue Judge</AssemblyTitle>
     <Product>ReVue Judge</Product>
-    <Version>2.0.0-beta</Version>
-    <InformationalVersion>2.0.0-beta</InformationalVersion>
+    <Version>2.0.0-beta2</Version>
+    <InformationalVersion>2.0.0-beta2</InformationalVersion>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <ApplicationIcon>$(MSBuildThisFileDirectory)ReVue-Judge.ico</ApplicationIcon>
     <Win32Icon>$(MSBuildThisFileDirectory)ReVue-Judge.ico</Win32Icon>
@@ -16,6 +16,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="..\Shared\Diagnostics\RuntimeLog.cs" Link="Diagnostics\RuntimeLog.cs" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3856.49" />
   </ItemGroup>
 

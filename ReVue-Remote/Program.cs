@@ -83,6 +83,7 @@ app.UseStaticFiles(new StaticFileOptions
             string.Equals(assetPath, "/app.js", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(assetPath, "/config.html", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(assetPath, "/config.js", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(assetPath, "/publish-settings.js", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(assetPath, "/config.css", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(assetPath, "/video-cache-sw.js", StringComparison.OrdinalIgnoreCase))
         {
@@ -212,7 +213,7 @@ async Task<IResult?> RequireRinkManagementAsync(string code, HttpContext context
 
 app.MapGet("/api/health", () => Results.Ok(new { status = "ok", service = "ReVue-Remote" }));
 
-// MediaMTX sends this callback for each RTMP publisher and RTSP/HLS reader.
+// MediaMTX sends this callback for RTMP/SRT publishers and RTSP/HLS readers.
 // Its shared token must be configured on both services and must not be exposed
 // through the public reverse proxy.
 app.MapPost("/api/internal/mediamtx-auth", async (
@@ -228,10 +229,31 @@ app.MapPost("/api/internal/mediamtx-auth", async (
     if (!RemoteSessionStore.IsValidSessionCode(request.Path) ||
         await accounts.GetKeyModeAsync(request.Path, context.RequestAborted) != SessionKeyModes.Live)
         return Results.Unauthorized();
+    // MediaMTX paths are case-sensitive, while ReVue reads HLS and status
+    // from the canonical upper-case Rink ID. Reject other spellings so an
+    // encoder publishing to "live01" fails visibly instead of feeding a path
+    // that no viewer or recorder will ever read.
+    if (!string.Equals(request.Path, RemoteSessionStore.NormalizeSessionCode(request.Path), StringComparison.Ordinal))
+        return Results.Unauthorized();
     if (string.Equals(request.Action, "publish", StringComparison.OrdinalIgnoreCase) &&
-        string.Equals(request.Protocol, "rtmp", StringComparison.OrdinalIgnoreCase))
-        return await accounts.AuthorizeLivePublisherAsync(request.Path, request.Password, context.RequestAborted)
-            ? Results.Ok() : Results.Unauthorized();
+        (string.Equals(request.Protocol, "rtmp", StringComparison.OrdinalIgnoreCase) ||
+         string.Equals(request.Protocol, "srt", StringComparison.OrdinalIgnoreCase)))
+    {
+        var authorized = await accounts.AuthorizeLivePublisherAsync(
+            request.Path, request.Password, context.RequestAborted);
+        // Generated SRT Stream IDs percent-encode the password so commas and
+        // other delimiters survive hardware encoders and MediaMTX's parser.
+        // Accept literal credentials too, including passwords containing "%".
+        if (!authorized && string.Equals(request.Protocol, "srt", StringComparison.OrdinalIgnoreCase) &&
+            request.Password?.Contains('%') == true)
+        {
+            var decoded = Uri.UnescapeDataString(request.Password);
+            if (decoded != request.Password)
+                authorized = await accounts.AuthorizeLivePublisherAsync(
+                    request.Path, decoded, context.RequestAborted);
+        }
+        return authorized ? Results.Ok() : Results.Unauthorized();
+    }
     if (string.Equals(request.Action, "read", StringComparison.OrdinalIgnoreCase) &&
         string.Equals(request.Protocol, "rtsp", StringComparison.OrdinalIgnoreCase))
         return await accounts.AuthorizePublicRtspReaderAsync(
@@ -405,9 +427,15 @@ app.MapPut("/api/manage/keys/{code}/media", async (
         if (request.Mode is not null &&
             !string.Equals(request.Mode, SessionKeyModes.Live, StringComparison.OrdinalIgnoreCase))
             return Results.BadRequest("Rink ID type cannot be changed after creation.");
+        // The stream settings form resubmits the saved publish password, so
+        // disconnect publishers only when the password actually changes.
+        var publishPasswordChanged = request.PublishPassword is { Length: > 0 } &&
+            !await accounts.PublishPasswordMatchesAsync(code, request.PublishPassword, context.RequestAborted);
         var result = await accounts.UpdateKeyMediaAsync(
             code, request.PublishPassword, request.PublicRtspEnabled, request.PublicRtspPassword,
             CurrentUserId(context), IsAdmin(context), context.RequestAborted);
+        if (publishPasswordChanged)
+            await streams.KickPublisherAsync(code, context.RequestAborted);
         if (request.PublicRtspEnabled == false || request.PublicRtspPassword is not null)
             await streams.KickRtspReadersAsync(code, context.RequestAborted);
         return Results.Ok(result);

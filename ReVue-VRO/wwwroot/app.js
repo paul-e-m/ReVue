@@ -188,7 +188,7 @@ export class ReVueVROApp {
         // Cache appconfig early so later interactions do not need an extra fetch.
         this.appConfig = null;
         this.skateCanadaApiBaseUrl = "https://sc-css-public-api-cmh9d3htgxfpdkb7.canadacentral-01.azurewebsites.net";
-        this.appVersion = "v2.0.0-beta";
+        this.appVersion = "v2.0.0-beta2";
         this.currentLanguage = "en";
         this.i18n = window.INDEX_I18N || {};
         this.buttonImageUrlCache = new Map();

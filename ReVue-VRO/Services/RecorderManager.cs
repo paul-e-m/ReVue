@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Text.Json;
 using ReVueVRO.Models;
+using ReVue.Diagnostics;
 
 namespace ReVueVRO.Services;
 
@@ -19,6 +20,15 @@ public class RecorderManager
     private DateTime _lastInputWarmupUtc = DateTime.MinValue;
     private readonly Queue<string> _recentStartErrorLines = new();
     private string? _lastStartError;
+    private RecordingDiagnostics? _diagnostics;
+
+    private sealed class RecordingDiagnostics
+    {
+        public readonly string Id = Guid.NewGuid().ToString("N")[..12];
+        public readonly long StartedAt = Stopwatch.GetTimestamp();
+        public long LastProgress = Stopwatch.GetTimestamp();
+        public long Frames;
+    }
 
     private readonly string _contentRoot;
     private readonly string _toolsDir;
@@ -93,6 +103,7 @@ public class RecorderManager
         }
 
         if (p == null) return;
+        RuntimeLog.Write("Information", "Recording", "Stopping recording process during shutdown/reset.");
 
         try
         {
@@ -149,6 +160,7 @@ public class RecorderManager
         CancellationTokenSource? startMonitorCts = null;
         TaskCompletionSource<bool>? firstFrameSeenTcs = null;
         Task<bool>? startResultTask = null;
+        RecordingDiagnostics? startDiagnostics = null;
 
         lock (_lock)
         {
@@ -156,6 +168,10 @@ public class RecorderManager
 
             CancelStartMonitor_NoLock();
             ResetStartDiagnostics_NoLock();
+            var diagnostics = new RecordingDiagnostics();
+            startDiagnostics = diagnostics;
+            _diagnostics = diagnostics;
+            RuntimeLog.Write("Information", "Recording", $"Arming; recording={diagnostics.Id}; source={cfg.VideoSourceMode}; transport={cfg.RtspTransportProtocol}; hardwareRequested={cfg.UseHardwareEncodingWhenAvailable}");
             TryDelete(_highResTempFile);
             TryDelete(_lowResTempFile);
 
@@ -166,6 +182,7 @@ public class RecorderManager
             var highResGop = GetConfiguredGop(cfg);
             var lowResGop = GetConfiguredLowResGop(cfg);
             var encoderName = ResolveEncoderName(ffmpegExe, cfg, highResGop);
+            RuntimeLog.Write("Information", "Recording", $"Encoder selected; recording={diagnostics.Id}; encoder={encoderName}; highGop={highResGop}; lowGop={lowResGop}; lowBitrateKbps={cfg.LowresVideoBitrate}");
             var inputArgs = BuildInputArgs(cfg, demoStartSeconds, liveDelaySeconds);
 
             var args =
@@ -192,13 +209,24 @@ public class RecorderManager
             {
                 if (TryParseProgressFrameCount(e.Data, out var frameCount) && frameCount > 0)
                 {
+                    if (frameCount > Interlocked.Read(ref diagnostics.Frames))
+                    {
+                        Interlocked.Exchange(ref diagnostics.Frames, frameCount);
+                        Interlocked.Exchange(ref diagnostics.LastProgress, Stopwatch.GetTimestamp());
+                    }
                     localFirstFrameSeenTcs.TrySetResult(true);
                 }
             };
-            process.ErrorDataReceived += (_, e) => CaptureStartErrorLine(e.Data);
+            process.ErrorDataReceived += (_, e) =>
+            {
+                CaptureStartErrorLine(e.Data);
+                if (!string.IsNullOrWhiteSpace(e.Data))
+                    RuntimeLog.Write("Warning", "FFmpeg", $"recording={diagnostics.Id}; {e.Data}");
+            };
             process.Start();
             process.BeginOutputReadLine();
             process.BeginErrorReadLine();
+            RuntimeLog.Write("Information", "Recording", $"FFmpeg started; recording={diagnostics.Id}; pid={process.Id}");
 
             _ffmpeg = process;
             startedProcess = process;
@@ -214,7 +242,8 @@ public class RecorderManager
 
         if (startedProcess != null && startMonitorCts != null && firstFrameSeenTcs != null)
         {
-            _startMonitorTask = Task.Run(() => MonitorRecordingStartAsync(startedProcess, firstFrameSeenTcs.Task, startMonitorCts.Token));
+            var diagnostics = startDiagnostics!;
+            _startMonitorTask = Task.Run(() => MonitorRecordingStartAsync(startedProcess, firstFrameSeenTcs.Task, diagnostics, startMonitorCts.Token));
         }
 
         if (startResultTask == null)
@@ -245,7 +274,7 @@ public class RecorderManager
         }
     }
 
-    private async Task MonitorRecordingStartAsync(Process process, Task firstFrameSeenTask, CancellationToken cancellationToken)
+    private async Task MonitorRecordingStartAsync(Process process, Task firstFrameSeenTask, RecordingDiagnostics diagnostics, CancellationToken cancellationToken)
     {
         var deadlineUtc = DateTime.UtcNow + RecordingStartTimeout;
 
@@ -257,6 +286,7 @@ public class RecorderManager
                 {
                     try { process.WaitForExit(); } catch { }
                     SetLastStartErrorIfMissing("The recording process exited before any video frames were received.");
+                    RuntimeLog.Write("Error", "Recording", $"FFmpeg exited before first frame; recording={diagnostics.Id}; exitCode={process.ExitCode}");
                     _session.CancelRecordingStart();
                     _startResultTcs?.TrySetResult(false);
                     return;
@@ -266,6 +296,7 @@ public class RecorderManager
                 {
                     _session.OnRecordingStarted();
                     _startResultTcs?.TrySetResult(true);
+                    await MonitorRecordingHealthAsync(process, diagnostics, cancellationToken);
                     return;
                 }
 
@@ -282,6 +313,7 @@ public class RecorderManager
                 {
                     _session.OnRecordingStarted();
                     _startResultTcs?.TrySetResult(true);
+                    await MonitorRecordingHealthAsync(process, diagnostics, cancellationToken);
                     return;
                 }
             }
@@ -290,6 +322,7 @@ public class RecorderManager
             {
                 SetLastStartErrorIfMissing(
                     $"No video frames were received within {(int)RecordingStartTimeout.TotalSeconds} seconds.");
+                RuntimeLog.Write("Error", "Recording", $"First-frame timeout; recording={diagnostics.Id}; timeoutSeconds={RecordingStartTimeout.TotalSeconds}");
                 _session.CancelRecordingStart();
                 _startResultTcs?.TrySetResult(false);
                 TryTerminateProcess(process);
@@ -300,9 +333,52 @@ public class RecorderManager
         }
         catch (Exception ex)
         {
+            RuntimeLog.Write("Error", "Recording", $"Recording monitor failed; recording={diagnostics.Id}", ex);
             SetLastStartErrorIfMissing(ex.Message);
             _session.CancelRecordingStart();
             _startResultTcs?.TrySetResult(false);
+        }
+    }
+
+    private static async Task MonitorRecordingHealthAsync(Process process, RecordingDiagnostics diagnostics, CancellationToken cancellationToken)
+    {
+        RuntimeLog.Write("Information", "Recording", $"First frame received; recording={diagnostics.Id}; elapsedMs={Stopwatch.GetElapsedTime(diagnostics.StartedAt).TotalMilliseconds:F0}");
+        var sampleAt = Stopwatch.GetTimestamp();
+        var stalled = false;
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                await Task.Delay(1000, cancellationToken).ConfigureAwait(false);
+                if (process.HasExited)
+                {
+                    RuntimeLog.Write("Error", "Recording", $"FFmpeg exited unexpectedly; recording={diagnostics.Id}; exitCode={process.ExitCode}");
+                    return;
+                }
+                var silentSeconds = Stopwatch.GetElapsedTime(Interlocked.Read(ref diagnostics.LastProgress)).TotalSeconds;
+                if (silentSeconds >= 10 && !stalled)
+                {
+                    stalled = true;
+                    RuntimeLog.Write("Warning", "Recording", $"Frame progress stalled; recording={diagnostics.Id}; secondsWithoutProgress={silentSeconds:F0}");
+                }
+                else if (silentSeconds < 10 && stalled)
+                {
+                    stalled = false;
+                    RuntimeLog.Write("Information", "Recording", $"Frame progress resumed; recording={diagnostics.Id}");
+                }
+                if (Stopwatch.GetElapsedTime(sampleAt).TotalSeconds >= 30)
+                {
+                    sampleAt = Stopwatch.GetTimestamp();
+                    RuntimeLog.Write("Information", "Recording", $"Progress sample; recording={diagnostics.Id}; frames={Interlocked.Read(ref diagnostics.Frames)}; elapsedSeconds={Stopwatch.GetElapsedTime(diagnostics.StartedAt).TotalSeconds:F0}");
+                }
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+        catch (Exception ex)
+        {
+            // Monitoring is observational and must not change recording/session state.
+            if (!cancellationToken.IsCancellationRequested)
+                RuntimeLog.Write("Warning", "Recording", $"Health sampling stopped; recording={diagnostics.Id}", ex);
         }
     }
 
@@ -650,14 +726,18 @@ public class RecorderManager
     public async Task<double> StopRecordingAndGetDurationSecondsAsync(AppConfig cfg, double? uiElapsedSeconds = null, double? programTimerStartOffsetSeconds = null)
     {
         Process? p;
+        string? recordingId;
+        var stopAt = Stopwatch.GetTimestamp();
         lock (_lock)
         {
             CancelStartMonitor_NoLock();
             p = _ffmpeg;
+            recordingId = _diagnostics?.Id;
             _ffmpeg = null;
         }
 
         if (p == null) return 0;
+        RuntimeLog.Write("Information", "Recording", $"Stop requested; recording={recordingId}; uiElapsedSeconds={uiElapsedSeconds:F3}");
 
         try
         {
@@ -667,10 +747,13 @@ public class RecorderManager
 
                 if (!p.WaitForExit(4000))
                 {
+                    RuntimeLog.Write("Warning", "Recording", $"Graceful stop timed out; terminating FFmpeg; recording={recordingId}");
                     try { p.Kill(entireProcessTree: true); } catch { }
                     try { p.WaitForExit(2000); } catch { }
                 }
             }
+            if (p.HasExited)
+                RuntimeLog.Write(p.ExitCode == 0 ? "Information" : "Warning", "Recording", $"FFmpeg stopped; recording={recordingId}; exitCode={p.ExitCode}");
         }
         finally
         {
@@ -683,8 +766,14 @@ public class RecorderManager
         _session.OnRecordingStopped(dur, uiElapsedSeconds, programTimerStartOffsetSeconds);
 
         SaveRecordingIfNeeded(cfg);
+        RuntimeLog.Write(dur > 0 ? "Information" : "Warning", "Recording", $"Replay prepared; recording={recordingId}; durationSeconds={dur:F3}; stopToReplayMs={Stopwatch.GetElapsedTime(stopAt).TotalMilliseconds:F0}; highBytes={GetFileLength(_highResFile)}; lowBytes={GetFileLength(_lowResFile)}");
 
         return dur;
+    }
+
+    private static long GetFileLength(string path)
+    {
+        try { return new FileInfo(path).Length; } catch { return -1; }
     }
 
     private static void TryGracefulStop(Process p)
@@ -746,6 +835,7 @@ public class RecorderManager
                 Thread.Sleep(100);
             }
         }
+        RuntimeLog.Write("Error", "Recording", "Replay file could not be finalized after 20 attempts; file=" + Path.GetFileName(tempPath));
     }
 
     private static void TryDelete(string path)
@@ -780,7 +870,13 @@ public class RecorderManager
         };
 
         using var proc = new Process { StartInfo = psi };
+        proc.ErrorDataReceived += (_, e) =>
+        {
+            if (!string.IsNullOrWhiteSpace(e.Data))
+                RuntimeLog.Write("Warning", "FFprobe", e.Data);
+        };
         proc.Start();
+        proc.BeginErrorReadLine();
 
         var output = (await proc.StandardOutput.ReadToEndAsync()).Trim();
         proc.WaitForExit(2000);
@@ -806,7 +902,11 @@ public class RecorderManager
 
         var sourceVideoPath = _lowResFile;
 
-        if (!File.Exists(sourceVideoPath)) return;
+        if (!File.Exists(sourceVideoPath))
+        {
+            RuntimeLog.Write("Warning", "Export", "Saved-video export skipped: low-resolution replay is missing.");
+            return;
+        }
 
         try
         {
@@ -830,9 +930,11 @@ public class RecorderManager
             File.Copy(sourceVideoPath, savedVideoPath, overwrite: true);
 
             _session.SetSavedMarkerJsonPath(savedJsonPath);
+            RuntimeLog.Write("Information", "Export", "Saved-video export completed.");
         }
-        catch
+        catch (Exception ex)
         {
+            RuntimeLog.Write("Error", "Export", "Saved-video export failed.", ex);
             _session.SetSavedMarkerJsonPath(null);
         }
     }

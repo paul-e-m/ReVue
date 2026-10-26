@@ -209,6 +209,11 @@
     let livePrefetchTimer = null;
     let livePrefetchInFlight = false;
     let livePrefetchedUrls = new Set();
+    // Segment URLs from the event playlist once the server has finalized it
+    // (#EXT-X-ENDLIST). A finalized playlist does not change, so it is not
+    // downloaded again, and prefetching stops once every segment is cached.
+    let liveFinalSegmentUrls = null;
+    let livePrefetchComplete = false;
     const LIVE_CACHE_NAME = "revue-live-events-v1";
 
     const CONNECTIVITY_INTERVAL_MS = 3000;
@@ -436,6 +441,7 @@
 
     async function purgeLiveEventCache(eventId) {
         if (!sessionCode || !/^[a-f0-9]{32}$/.test(eventId)) return;
+        if (eventId === liveEventId) livePrefetchComplete = false;
         const prefix = `/api/sessions/${sessionCode}/live/events/${eventId}/`;
         if (await videoCacheReady && navigator.serviceWorker.controller) {
             try {
@@ -466,20 +472,25 @@
             !await videoCacheReady) return;
         livePrefetchInFlight = true;
         try {
-            const playlistUrl = liveEventUrl(eventId);
-            const response = await fetch(playlistUrl, { cache: "no-store" });
-            if (!response.ok) return;
-            const playlist = await response.text();
-            const names = [];
-            const init = playlist.match(/#EXT-X-MAP:URI="([^"]+)"/);
-            if (init) names.push(init[1]);
-            for (const line of playlist.split(/\r?\n/)) {
-                const name = line.trim();
-                if (name && !name.startsWith("#")) names.push(name);
+            let urls = liveFinalSegmentUrls;
+            if (!urls) {
+                const playlistUrl = liveEventUrl(eventId);
+                const response = await fetch(playlistUrl, { cache: "no-store" });
+                if (!response.ok) return;
+                const playlist = await response.text();
+                const names = [];
+                const init = playlist.match(/#EXT-X-MAP:URI="([^"]+)"/);
+                if (init) names.push(init[1]);
+                for (const line of playlist.split(/\r?\n/)) {
+                    const name = line.trim();
+                    if (name && !name.startsWith("#")) names.push(name);
+                }
+                const eventPrefix = `/api/sessions/${sessionCode}/live/events/${eventId}/`;
+                urls = names.map(name => new URL(name, playlistUrl)).filter(url =>
+                    url.origin === location.origin && url.pathname.startsWith(eventPrefix));
+                if (eventId !== liveEventId) return;
+                if (/^#EXT-X-ENDLIST\s*$/m.test(playlist)) liveFinalSegmentUrls = urls;
             }
-            const eventPrefix = `/api/sessions/${sessionCode}/live/events/${eventId}/`;
-            const urls = names.map(name => new URL(name, playlistUrl)).filter(url =>
-                url.origin === location.origin && url.pathname.startsWith(eventPrefix));
             const cache = await caches.open(LIVE_CACHE_NAME);
             for (const url of urls) {
                 if (eventId !== liveEventId || isStandbyAfterStop(latestState)) return;
@@ -493,20 +504,31 @@
                     await segment.arrayBuffer();
                     if (await cache.match(url.href, { ignoreSearch: true }))
                         livePrefetchedUrls.add(url.pathname);
+                } else if (segment.status === 404 && urls === liveFinalSegmentUrls) {
+                    // The server trimmed the event after this list was saved;
+                    // read the playlist again on the next pass.
+                    liveFinalSegmentUrls = null;
                 }
                 // Playback has priority; fill missing history gradually after
                 // Stop instead of downloading the whole event in one burst.
                 break;
+            }
+            if (eventId === liveEventId && urls === liveFinalSegmentUrls &&
+                urls.every(url => livePrefetchedUrls.has(url.pathname))) {
+                livePrefetchComplete = true;
+                stopLivePrefetch();
             }
         } catch { }
         finally { livePrefetchInFlight = false; }
     }
 
     function startLivePrefetch(eventId) {
-        if (liveEventId === eventId && livePrefetchTimer !== null) return;
+        if (liveEventId === eventId && (livePrefetchTimer !== null || livePrefetchComplete)) return;
         stopLivePrefetch();
         liveEventId = eventId;
         livePrefetchedUrls = new Set();
+        liveFinalSegmentUrls = null;
+        livePrefetchComplete = false;
         if (!eventId) return;
         void prefetchLiveSegments(eventId);
         livePrefetchTimer = setInterval(() => { void prefetchLiveSegments(eventId); }, 500);

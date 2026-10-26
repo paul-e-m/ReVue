@@ -115,12 +115,20 @@ public sealed class ReVueJudgeMainForm : Form
             _webView.CoreWebView2.Settings.IsZoomControlEnabled = true;
             _webView.CoreWebView2.Settings.IsWebMessageEnabled = true;
             _webView.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
+            _webView.CoreWebView2.ProcessFailed += (_, e) =>
+                ReVue.Diagnostics.RuntimeLog.Write("Error", "WebView2", "Judge browser process failed: " + e.ProcessFailedKind);
+            _webView.CoreWebView2.NavigationCompleted += (_, e) =>
+            {
+                if (!e.IsSuccess)
+                    ReVue.Diagnostics.RuntimeLog.Write("Warning", "WebView2", "Judge navigation failed: " + e.WebErrorStatus);
+            };
             ApplyZoomFromConfig();
             _webView.ZoomFactorChanged += (_, _) => SaveCurrentZoomToConfig();
             await NavigateReVueJudgeAsync();
         }
         catch (Exception ex)
         {
+            ReVue.Diagnostics.RuntimeLog.Write("Error", "WebView2", "Judge browser initialization failed.", ex);
             MessageBox.Show(
                 this,
                 "WebView2 could not be initialized.\r\n\r\n" + ex.Message,
@@ -271,6 +279,7 @@ public sealed class ReVueJudgeMainForm : Form
         }
         catch (Exception ex)
         {
+            ReVue.Diagnostics.RuntimeLog.Write("Warning", "Judge", "Judge UI/API action failed.", ex);
             PostError(id, ex.Message);
         }
     }

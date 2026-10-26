@@ -3,6 +3,8 @@ using ReVueVRO.Hosting;
 using ReVueVRO.Shell;
 using System.Diagnostics;
 using System.Windows.Forms;
+using ReVue.Diagnostics;
+using System.Reflection;
 
 namespace ReVueVRO;
 
@@ -25,6 +27,12 @@ internal static class Program
             }
 
             singleInstance.StartActivationListener();
+            using var runtimeLog = RuntimeLog.Start("ReVue-VRO", typeof(Program).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "unknown");
+            AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+            {
+                RuntimeLog.Write("Critical", "Application", "Unhandled exception; process terminating=" + e.IsTerminating, e.ExceptionObject as Exception);
+                runtimeLog?.Dispose();
+            };
 
             WebApplication app;
 
@@ -35,6 +43,7 @@ internal static class Program
             }
             catch (Exception ex)
             {
+                RuntimeLog.Write("Error", "Application", "Local web server could not start.", ex);
                 MessageBox.Show(
                     "ReVue VRO could not start the local web server.\r\n\r\n" + ex.Message,
                     "ReVue VRO",
@@ -55,6 +64,7 @@ internal static class Program
             {
                 try { app.StopAsync().GetAwaiter().GetResult(); } catch { }
                 try { app.DisposeAsync().AsTask().GetAwaiter().GetResult(); } catch { }
+                RuntimeLog.Write("Information", "Application", "Stopped; restart requested=" + restartPending);
             }
         }
         finally

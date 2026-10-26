@@ -3,6 +3,7 @@
     let me = null;
     let keys = [];
     let savedPublishPassword = "";
+    let srtConnection = null;
     let savedPublicRtspPassword = "";
     let savedPublicRtspHasPassword = false;
     const liveSamples = new Map();
@@ -127,7 +128,7 @@
             const detail = me.role === "Admin"
                 ? `Created by ${esc(key.createdByEmail)}, ${created}`
                 : `Created ${created}`;
-            const media = key.mode === "Live" ? "Live · RTMP publisher" : "Recorded";
+            const media = key.mode === "Live" ? "Live · RTMP / SRT publisher" : "Recorded";
             const streamSettings = key.mode === "Live"
                 ? `<button class="small" data-media-key="${esc(key.code)}">Stream settings</button>` +
                   `<button class="small secondary" data-encoder-settings="${esc(key.code)}">Encoder settings</button>` : "";
@@ -327,6 +328,24 @@
 
     function setKeyPasswordVisibility(visible) {
         setPasswordVisibility("keyPublishPassword", "toggleKeyPublishPassword", visible);
+        updateSrtConnectionSettings(visible);
+    }
+
+    function updateSrtConnectionSettings(visible = false) {
+        $("keySrtUrl").textContent = `srt://${location.hostname}:8890`;
+        srtConnection = null;
+        try {
+            srtConnection = ReVuePublishSettings.srtConnection(
+                location.hostname, $("keyMediaForm").dataset.code, savedPublishPassword);
+            $("keySrtStreamId").textContent = visible ? srtConnection.streamId
+                : srtConnection.streamId.replace(/,s=.*$/, ",s=••••••••");
+            $("keySrtCopyFeedback").textContent = "";
+        } catch (error) {
+            $("keySrtStreamId").textContent = "Unavailable";
+            $("keySrtCopyFeedback").textContent = error.message;
+        }
+        $("copyKeySrtUrl").disabled = !srtConnection;
+        $("copyKeySrtStreamId").disabled = !srtConnection;
     }
 
     function setPublicRtspPasswordVisibility(visible) {
@@ -915,6 +934,7 @@
         const encoderCode = event.target.closest("[data-encoder-settings]")?.dataset.encoderSettings;
         if (encoderCode) {
             $("encoderSettingsRinkId").textContent = encoderCode;
+            $("encoderSrtHost").textContent = location.hostname;
             $("encoderSettingsDialog").showModal();
             return;
         }
@@ -1051,15 +1071,32 @@
     $("copyEncoderSettings").onclick = async () => {
         const settings = [
             "ReVue Remote encoder settings",
-            "Protocol: RTMP",
+            "",
+            "Choose one connection protocol. SRT is recommended; use RTMP if your encoder does not support SRT.",
+            "",
+            "SRT (recommended)",
+            `SRT server: ${location.hostname}`,
+            "SRT port: 8890 / UDP",
+            "SRT mode: Caller",
+            "SRT payload: MPEG-TS",
+            "SRT Stream ID: copy from this Rink ID's Stream settings (includes the saved publish password)",
+            "SRT encryption/passphrase: disabled",
+            "",
+            "RTMP",
+            "RTMP publish URL: copy from this Rink ID's Stream settings (includes the saved publish password)",
+            "RTMP port: 1935 / TCP",
+            "RTMP payload: FLV",
+            "",
+            "Video and audio (both SRT and RTMP)",
             "Resolution: 1280 x 720 progressive",
             "Frame rate: 59.94 fps constant (60000/1001)",
             "Video: H.264/AVC, 8-bit 4:2:0 (yuv420p)",
             "Rate control: CBR",
-            "Video bitrate: 6000 kbps recommended",
+            "Video bitrate: 4500 kbps recommended",
             "Keyframe interval: 1 second (GOP 60)",
             "B-frames: 0",
-            "Audio: AAC-LC, 48 kHz, stereo, 128 kbps"
+            "Audio: AAC-LC, 48 kHz, stereo, 128 kbps",
+            "Do not use H.265/HEVC, variable frame rate, interlaced video, or B-frames."
         ].join("\n");
         try {
             await copyText(settings);
@@ -1088,6 +1125,17 @@
             $("keyCopyFeedback").textContent = "Could not copy the URL. Select it and copy it manually.";
         }
     };
+    async function copySrtSettings(kind) {
+        if (!srtConnection) return;
+        try {
+            await copyText(kind === "url" ? srtConnection.url : srtConnection.streamId);
+            $("keySrtCopyFeedback").textContent = "Copied to clipboard (including the saved publish password).";
+        } catch {
+            $("keySrtCopyFeedback").textContent = "Could not copy the SRT settings. Use Show password to reveal the Stream ID and copy it manually.";
+        }
+    }
+    $("copyKeySrtUrl").onclick = () => copySrtSettings("url");
+    $("copyKeySrtStreamId").onclick = () => copySrtSettings("streamId");
     $("keyMediaForm").onsubmit = async event => {
         event.preventDefault();
         const code = $("keyMediaForm").dataset.code;

@@ -39,11 +39,52 @@ ReVueRemote__FFprobePath=ffprobe
 
 ## Live Rink IDs
 
-In `/config` → Rink IDs, choose **Recorded video playback** or **Live stream (RTMP)** when creating each Rink ID. Its type cannot be changed afterward. A Live ID requires an RTMP publish password at creation; its Stream settings let you copy the password-bearing publish URL or change the password later. Live IDs are omitted from the Videos library. Recorded IDs retain the existing uploaded MP4 workflow and have no stream settings.
+In `/config` → Rink IDs, choose **Recorded video playback** or **Live stream (RTMP / SRT)** when creating each Rink ID. Its type cannot be changed afterward. A Live ID requires a publish password at creation, shared by RTMP and SRT. Its Stream settings let you copy either publish URL, copy the SRT Stream ID, or change the password later. Live IDs are omitted from the Videos library. Recorded IDs retain the existing uploaded MP4 workflow and have no stream settings.
 
-Run a MediaMTX service on the same host as ReVue-Remote using [mediamtx.live.example.yml](mediamtx.live.example.yml) as the starting configuration. Enable HTTP/2 on the public HTTPS Nginx listener: several viewer tabs in one browser each hold an EventSource connection, and HTTP/1.1 limits their combined connections to the same host. For Nginx 1.24, use `listen 443 ssl http2;`, then run `sudo nginx -t && sudo systemctl reload nginx`; `curl -sS -o /dev/null -w '%{http_version}\n' --http2 https://HOST/api/health` should print `2`. Use `hlsVariant: fmp4`, one-second segments, and at least 10 retained segments for the delayed preview and recording lead-in; 20 retained segments, as in the example, give more room for recorder startup. The low-latency variant's 200 ms parts add unnecessary browser and HTTP work when several viewers run at once. Generate a random token with `openssl rand -hex 32`, put it in the MediaMTX `authHTTPAddress` query, and set the matching `ReVueRemote__MediaAuthToken` environment variable on ReVue-Remote. Adjust the callback port if ReVue-Remote does not listen on `5080`. Allow publisher access to TCP `1935` and public RTSP viewer access to TCP `554`; keep MediaMTX HLS on loopback TCP `8888` and its read-only status API on loopback TCP `9997`. Set `ReVueRemote__MediaMtxHlsBase` or `ReVueRemote__MediaMtxApiBase` only if those internal addresses differ from `http://127.0.0.1:8888` or `http://127.0.0.1:9997`.
+Run a MediaMTX service on the same host as ReVue-Remote using [mediamtx.live.example.yml](mediamtx.live.example.yml) as the starting configuration. Enable HTTP/2 on the public HTTPS Nginx listener: several viewer tabs in one browser each hold an EventSource connection, and HTTP/1.1 limits their combined connections to the same host. For Nginx 1.24, use `listen 443 ssl http2;`, then run `sudo nginx -t && sudo systemctl reload nginx`; `curl -sS -o /dev/null -w '%{http_version}\n' --http2 https://HOST/api/health` should print `2`. Use `hlsVariant: fmp4`, one-second segments, and at least 10 retained segments for the delayed preview and recording lead-in; 20 retained segments, as in the example, give more room for recorder startup. The low-latency variant's 200 ms parts add unnecessary browser and HTTP work when several viewers run at once. Generate a random token with `openssl rand -hex 32`, put it in the MediaMTX `authHTTPAddress` query, and set the matching `ReVueRemote__MediaAuthToken` environment variable on ReVue-Remote. Adjust the callback port if ReVue-Remote does not listen on `5080`. Allow RTMP publisher access to TCP `1935`, SRT publisher access to UDP `8890`, and optional public RTSP viewer access to TCP `554`; keep MediaMTX HLS on loopback TCP `8888` and its read-only status API on loopback TCP `9997`. Set `ReVueRemote__MediaMtxHlsBase` or `ReVueRemote__MediaMtxApiBase` only if those internal addresses differ from `http://127.0.0.1:8888` or `http://127.0.0.1:9997`.
 
-Publish to `rtmp://HOST/RINKID`. For a password protected Live ID, use `rtmp://HOST/RINKID?user=publisher&pass=PASSWORD`, URL encoding special characters in the password. The feed must be 1280×720 progressive, H.264/AVC 8-bit 4:2:0, constant 60000/1001 fps, with a 60-frame GOP, **no B-frames**, and AAC-LC audio. The `/config` Rink ID manager shows these requirements under **Encoder settings**, with 6000 kbps CBR video and 48 kHz stereo 128 kbps audio as the recommended rate settings. Set OBS to 59.94 fps, a one-second keyframe interval, and zero B-frames. MediaMTX remuxes the feed to HLS; ReVue VRO and the browser viewers use that same server HLS preview. Remote Live does not run a second RTSP-to-HLS preview on the VRO laptop. In VRO Settings, select **Remote Live**, enter the ReVue-Remote HTTPS host, and enter the Live Rink ID on the main screen. No video folder is selected.
+Publish to `rtmp://HOST/RINKID`. For a password protected Live ID, use `rtmp://HOST/RINKID?user=publisher&pass=PASSWORD`, URL encoding special characters in the password. The feed must be 1280×720 progressive, H.264/AVC 8-bit 4:2:0, constant 60000/1001 fps, with a 60-frame GOP, **no B-frames**, and AAC-LC audio. The `/config` Rink ID manager shows these requirements under **Encoder settings**, with 4500 kbps CBR video and 48 kHz stereo 128 kbps audio as the recommended rate settings. Set OBS to 59.94 fps, a one-second keyframe interval, and zero B-frames. MediaMTX remuxes the feed to HLS; ReVue VRO and the browser viewers use that same server HLS preview. Remote Live does not run a second RTSP-to-HLS preview on the VRO laptop. In VRO Settings, select **Remote Live**, enter the ReVue-Remote HTTPS host, and enter the Live Rink ID on the main screen. No video folder is selected.
+
+### SRT hardware encoders
+
+Existing Live Rink IDs accept either RTMP or SRT using the same saved publish password. There is no new Rink ID type or separate SRT encryption passphrase. Publish only one feed to a given Rink ID at a time. SRT ingest uses the same HLS preview, Record/Stop, replay, and Next Competitor workflow as RTMP. The video/audio requirements above apply to both protocols; the SRT payload is MPEG-TS, not FLV.
+
+In `/config` → Rink IDs → **Stream settings**, copy the **SRT Stream ID**. For a hardware encoder with separate connection fields, use:
+
+| Encoder field | Setting |
+| --- | --- |
+| Protocol | SRT |
+| Connection mode | Caller (the encoder initiates the connection) |
+| Destination / server | ReVue-Remote hostname or public IP |
+| Destination port | `8890` / UDP |
+| Container / payload | MPEG-TS |
+| Stream ID | Paste the complete value copied from Stream settings |
+| Encryption / SRT passphrase | Disabled / blank |
+
+Some encoders label their SRT encryption field **Password**. That field is not the ReVue publish password: leave encryption disabled and carry the saved ReVue password in **Stream ID**. Encoder firmware must support Caller mode and a configurable Stream ID; check those capabilities when setting up an AVMATRIX SE-1117 or another hardware encoder. Listener-only encoder configurations are not supported by this push workflow.
+
+The Stream ID uses the standard hardware-compatible syntax `#!::m=publish,r=RINKID,u=publisher,s=PASSWORD`. ReVue percent-encodes the password within the copied Stream ID so delimiters such as commas survive transport, and accepts both literal and encoded SRT passwords. Use the copy button rather than editing encoded credentials by hand. The SRT copy buttons use the saved password; save password changes before copying. Showing the publish password also reveals the Stream ID. Very long escaped passwords can exceed SRT's 512-byte Stream ID limit; the UI then explains that a shorter shared password is needed, without disabling RTMP.
+
+For an encoder accepting one complete connection URL, use **Copy SRT publish URL**. This includes `mode=caller`, the encoded Stream ID, and `pkt_size=1316`. For a client that expects a separate Stream ID, use **Copy SRT Stream ID** instead. The server address is `srt://HOST:8890`; the default port must match the deployed MediaMTX configuration. Set transport latency in the encoder according to the network link; its units vary by encoder.
+
+### Enabling SRT on an existing server
+
+Update ReVue-Remote and enable these settings in the running MediaMTX configuration (the supplied example already includes them):
+
+```yaml
+srt: yes
+srtAddress: :8890
+```
+
+Keep `source: publisher` for the rink paths and the existing HTTP authentication callback/token. Leave `srtPublishPassphrase` unset: SRT uses the existing per-rink publish password for authentication, with no additional media encryption. ReVue rejects SRT reads; viewers continue to use HTTPS/HLS or the existing optional RTSP relay. Pausing a Live Rink ID disconnects both RTMP and SRT publishers and rejects reconnection while paused.
+
+Open **UDP**, not TCP, port `8890` in both the host firewall and any provider firewall. For Ubuntu UFW:
+
+```text
+sudo ufw allow 8890/udp
+```
+
+On Azure, also add an inbound UDP `8890` rule to the VM's Network Security Group. On a VPS, apply any corresponding provider firewall rule. SRT goes directly to MediaMTX; no new Nginx location or public access to ports `5080`, `8888`, or `9997` is needed. Keep the existing Nginx upstream HTTP connection pooling for HLS and control traffic. Apply service/configuration restarts in a maintenance window because they interrupt active feeds.
 
 The Live Streams page shows live ingest status from the MediaMTX control API and offers an on-demand preview of active feeds. It displays start time, total received data, and a receive rate calculated from successive byte counts. Resolution and codecs appear when the installed MediaMTX version provides them; FPS is not reported by this API. The preview uses the existing HLS feed and stops downloading when closed. Each live stream also has a **Public RTSP** switch, which is off by default. Enabling it requires a separate RTSP password. Its copy button produces `rtsp://viewer:PASSWORD@HOST/RINKID`, with special characters URL encoded. Disabling RTSP or changing its password disconnects current RTSP readers. MediaMTX serves the same encoded tracks through RTSP without transcoding.
 
@@ -72,3 +113,17 @@ Build ReVue-Remote in Debug, then run `node tests/live-cycles.mjs` from this dir
 It publishes video with a changing color time marker, uses real two-second HLS segments, and runs five Record → Stop → Next cycles with a viewer refresh during every recording. It checks decoded frames for old competitor footage, recording jumps, refresh lag, and clip replay. It runs the production server, viewer, and VRO HLS page through a test local proxy; the Windows WebView2 shell itself still requires a Windows check. Add `--control-gap` to interrupt VRO control updates for 65 seconds during competitor three and verify continuous recording, refresh recovery, and rejection of obsolete recording commands. Add `--offline` to check live joins before any VRO, operator disconnect after replay, new joins with an old recording, browser refresh, cache retention, and return to operator-directed replay, across the technical, Judge, Referee, Announcer, and Service Technician roles. Logs and results are retained in the printed temporary directory.
 
 Add `--storage-churn` to either run to create and delete live storage subdirectories throughout the test, exercising capacity measurements during folder cleanup.
+
+## SRT publishing regression tests
+
+After building ReVue-Remote in Debug, run:
+
+```text
+node --test tests/publish-settings.test.js
+dotnet run --project ../tests/RemotePublishing/RemotePublishing.Tests.csproj
+node tests/srt-ingest.mjs
+```
+
+The first test validates hardware Stream IDs, URL escaping, IPv6 addresses, shared passwords, and the SRT length limit. The .NET tests verify current and legacy MediaMTX publisher-list/kick APIs, pagination, rink isolation, and independent SRT cleanup when the RTMP API fails.
+
+The integration test requires Node 22+, FFmpeg/ffprobe, MediaMTX, and `srt-live-transmit` (from the SRT project). It uses FFmpeg as a synthetic hardware encoder and the SRT CLI as a Caller, so FFmpeg itself does not need libsrt support. It starts the production ReVue server with isolated temporary account/rink data and real HTTP authentication, verifies shared RTMP/SRT passwords and rejected credentials, plays advancing HLS video frames in Chrome, records and finalizes replay, checks Next Competitor cleanup, pauses/disconnects publishers, rejects paused reconnects, and checks that another rink stays online. `DOTNET_BINARY`, `FFMPEG_BINARY`, `FFPROBE_BINARY`, `MEDIAMTX_BINARY`, and `SRT_BINARY` can override executable paths. The test also uses Chrome/Chromium to check the management page's SRT copy buttons, hidden/revealed credentials, legacy keys, and narrow-screen layout; `CHROME_BINARY` can override its path. It reserves loopback TCP ports `15018`, `19918`, `18818`, `11918` and UDP `18890`; it refuses to run if they are occupied. Logs and results remain in the printed temporary directory. A physical encoder and production firewall still require deployment validation.

@@ -174,6 +174,7 @@ dialog { max-width: 430px; padding: 24px; border: 1px solid var(--line); border-
 dialog::backdrop { background: #18262cb3; }
 dialog form { display: grid; gap: 13px; }
 #renameVideoDialog { width: min(720px, calc(100vw - 32px)); max-width: 720px; }
+#keyMediaDialog { width: min(620px, calc(100vw - 32px)); max-width: 620px; }
 .publicRtspDialog { width: min(540px, calc(100vw - 32px)); max-width: 540px; }
 .publicRtspDialog h2 { margin: 0; }
 .dialogActions { display: flex; justify-content: flex-end; gap: 8px; }
@@ -188,9 +189,11 @@ dialog form { display: grid; gap: 13px; }
 .passwordInputRow input { width: 100%; min-width: 0; }
 .passwordVisibilityButton { display: grid; place-items: center; width: 39px; min-height: 39px; padding: 7px; }
 .passwordVisibilityButton svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-.encoderSettingsDialog { width: min(540px, calc(100vw - 32px)); max-width: 540px; }
+.encoderSettingsDialog { width: min(540px, calc(100vw - 32px)); max-width: 540px; max-height: calc(100dvh - 32px); overflow-y: auto; }
 .encoderSettingsDialog h2 { margin: 0 0 6px; }
 .encoderSettingsDialog > p { margin: 0 0 16px; }
+.encoderSettingsSection { margin: 0 0 16px; }
+.encoderSettingsSection h3 { margin: 0 0 8px; font-size: 15px; }
 .encoderSettingsList { display: grid; grid-template-columns: minmax(115px, auto) minmax(0, 1fr); gap: 7px 16px; margin: 0; padding: 15px; border: 1px solid var(--line); background: #f7f9f9; font-size: 13px; }
 .encoderSettingsList dt { color: var(--muted); }
 .encoderSettingsList dd { margin: 0; font-weight: 620; overflow-wrap: anywhere; }

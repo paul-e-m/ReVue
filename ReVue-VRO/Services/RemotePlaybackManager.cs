@@ -1,9 +1,11 @@
+using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Http;
 using ReVueVRO.Models;
+using ReVue.Diagnostics;
 
 namespace ReVueVRO.Services;
 
@@ -495,6 +497,31 @@ public sealed partial class RemotePlaybackManager : IDisposable
 
         lock (_publisherLock)
         {
+            if (!string.Equals(command.Mode, "ready", StringComparison.OrdinalIgnoreCase))
+            {
+                // Only "ready" may clear the selection. Remote rejects any
+                // other command without a video or event, and the publisher
+                // would keep resending it instead of renewing the lease.
+                if (string.IsNullOrWhiteSpace(command.VideoId))
+                {
+                    RuntimeLog.Write("Information", "RemotePlayback",
+                        $"Ignored a '{command.Mode}' update with no selected video or live event.");
+                    return Task.CompletedTask;
+                }
+                // After Next Competitor (idle "ready"), a new competitor always
+                // begins with "preparing". A replay update that arrives later
+                // belongs to the previous competitor.
+                if (_desiredIntent is { } current &&
+                    string.Equals(current.Command.Mode, "ready", StringComparison.OrdinalIgnoreCase) &&
+                    (string.Equals(command.Mode, "replay", StringComparison.OrdinalIgnoreCase) ||
+                     string.Equals(command.Mode, "reverse-unavailable", StringComparison.OrdinalIgnoreCase)))
+                {
+                    RuntimeLog.Write("Information", "RemotePlayback",
+                        "Ignored a replay update that arrived after Next Competitor.");
+                    return Task.CompletedTask;
+                }
+            }
+
             var transportBoundary = IsTransportBoundary(_desiredIntent?.Command, command);
             var intent = new RemotePlaybackIntent
             {
@@ -520,6 +547,8 @@ public sealed partial class RemotePlaybackManager : IDisposable
     private async Task PublishLoopAsync()
     {
         var retryDelayMilliseconds = 0;
+        var publishFailed = false;
+        var lastFailureLog = long.MinValue;
         while (!_publisherStop.IsCancellationRequested)
         {
             RemotePlaybackIntent? intent;
@@ -551,6 +580,11 @@ public sealed partial class RemotePlaybackManager : IDisposable
                             _activePublishCancellation = null;
                     }
                 }
+                if (publishFailed)
+                {
+                    RuntimeLog.Write("Information", "RemotePlayback", "Remote synchronization recovered.");
+                    publishFailed = false;
+                }
                 retryDelayMilliseconds = 0;
                 lock (_publisherLock)
                 {
@@ -570,8 +604,15 @@ public sealed partial class RemotePlaybackManager : IDisposable
             {
                 retryDelayMilliseconds = 0;
             }
-            catch
+            catch (Exception ex)
             {
+                var now = Environment.TickCount64;
+                if (!publishFailed || now - lastFailureLog >= 60_000)
+                {
+                    RuntimeLog.Write("Warning", "RemotePlayback", "Remote synchronization failed; retrying in background.", ex);
+                    lastFailureLog = now;
+                }
+                publishFailed = true;
                 lock (_publisherLock)
                 {
                     if (_desiredIntent?.Version == intent.Version)
@@ -615,6 +656,15 @@ public sealed partial class RemotePlaybackManager : IDisposable
             HttpMethod.Post,
             intent.HostUrl,
             $"api/sessions/{Uri.EscapeDataString(intent.SessionCode)}/playback");
+        // Use HTTP/2 when the server offers it (HTTPS only). A transport
+        // boundary cancels any in-flight heartbeat; over HTTP/1.1 that closes
+        // the connection, so the Play/Pause would wait for a new TCP and TLS
+        // handshake. HTTP/2 resets only the cancelled stream and keeps the
+        // connection open. Falls back to HTTP/1.1 when HTTP/2 is unavailable.
+        // Video downloads keep using separate HTTP/1.1 connections, so large
+        // transfers never share this connection with playback control.
+        request.Version = HttpVersion.Version20;
+        request.VersionPolicy = HttpVersionPolicy.RequestVersionOrLower;
         request.Content = JsonContent.Create(command);
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutCts.CancelAfter(TimeSpan.FromSeconds(5));

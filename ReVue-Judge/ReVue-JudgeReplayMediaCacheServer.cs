@@ -122,8 +122,10 @@ internal sealed class ReplayMediaCacheServer : IDisposable
 
             await ServeRangeAsync(context, token, cancellationToken);
         }
-        catch
+        catch (Exception ex)
         {
+            if (!cancellationToken.IsCancellationRequested)
+                ReVue.Diagnostics.RuntimeLog.Write("Warning", "JudgeMedia", "Replay range request failed.", ex);
             if (context.Response.OutputStream.CanWrite)
             {
                 context.Response.StatusCode = (int)HttpStatusCode.BadGateway;

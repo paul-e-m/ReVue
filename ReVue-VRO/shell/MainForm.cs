@@ -152,10 +152,18 @@ public sealed class MainForm : Form
                 SaveCurrentZoomToConfig();
             };
 
+            _webView.CoreWebView2.ProcessFailed += (_, e) =>
+                ReVue.Diagnostics.RuntimeLog.Write("Error", "WebView2", "Operator browser process failed: " + e.ProcessFailedKind);
+            _webView.CoreWebView2.NavigationCompleted += (_, e) =>
+            {
+                if (!e.IsSuccess)
+                    ReVue.Diagnostics.RuntimeLog.Write("Warning", "WebView2", "Operator navigation failed: " + e.WebErrorStatus);
+            };
             _webView.Source = new Uri(AppServer.MainPageUrl);
         }
         catch (Exception ex)
         {
+            ReVue.Diagnostics.RuntimeLog.Write("Error", "WebView2", "Operator browser initialization failed.", ex);
             MessageBox.Show(
                 this,
                 "WebView2 could not be initialized.\r\n\r\n" + ex.Message,

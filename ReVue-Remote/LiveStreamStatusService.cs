@@ -86,23 +86,30 @@ public sealed class LiveStreamStatusService
         return new(available, streams.ToArray());
     }
 
-    public async Task KickPublisherAsync(string rinkId, CancellationToken cancellationToken)
+    public Task KickPublisherAsync(string rinkId, CancellationToken cancellationToken)
     {
         rinkId = RemoteSessionStore.NormalizeSessionCode(rinkId);
+        return Task.WhenAll(
+            KickPublishersAsync(rinkId, "rtmp", cancellationToken),
+            KickPublishersAsync(rinkId, "srt", cancellationToken));
+    }
+
+    private async Task KickPublishersAsync(string rinkId, string protocol, CancellationToken cancellationToken)
+    {
         try
         {
             for (var page = 0; page < 20; page++)
             {
                 var (pageResponse, currentApi) = await GetWithLegacyFallbackAsync(
-                    $"/v3/rtmp/conns/list?page={page}&itemsPerPage=500",
-                    $"/v3/rtmpconns/list?page={page}&itemsPerPage=500", cancellationToken);
+                    $"/v3/{protocol}/conns/list?page={page}&itemsPerPage=500",
+                    $"/v3/{protocol}conns/list?page={page}&itemsPerPage=500", cancellationToken);
                 using var response = pageResponse;
                 response.EnsureSuccessStatusCode();
                 using var document = await JsonDocument.ParseAsync(
                     await response.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
                 var root = document.RootElement;
                 if (!root.TryGetProperty("items", out var items) || items.ValueKind != JsonValueKind.Array)
-                    throw new JsonException("MediaMTX did not return an RTMP connection list.");
+                    throw new JsonException($"MediaMTX did not return a {protocol.ToUpperInvariant()} connection list.");
                 foreach (var item in items.EnumerateArray())
                 {
                     var id = String(item, "id");
@@ -111,7 +118,7 @@ public sealed class LiveStreamStatusService
                     if (id is null || !string.Equals(path, rinkId, StringComparison.OrdinalIgnoreCase) ||
                         !string.Equals(state, "publish", StringComparison.OrdinalIgnoreCase)) continue;
                     using var kicked = await _client.PostAsync(
-                        $"{_apiBase}{(currentApi ? "/v3/rtmp/conns/kick/" : "/v3/rtmpconns/kick/")}{Uri.EscapeDataString(id)}",
+                        $"{_apiBase}{(currentApi ? $"/v3/{protocol}/conns/kick/" : $"/v3/{protocol}conns/kick/")}{Uri.EscapeDataString(id)}",
                         null, cancellationToken);
                     kicked.EnsureSuccessStatusCode();
                 }
@@ -122,8 +129,8 @@ public sealed class LiveStreamStatusService
         catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException)
         {
             _logger.LogWarning(ex,
-                "The live feed for {RinkId} was paused, but MediaMTX did not accept the publisher disconnect request",
-                rinkId);
+                "The live feed for {RinkId} was paused, but MediaMTX did not accept the {Protocol} publisher disconnect request",
+                rinkId, protocol.ToUpperInvariant());
         }
     }
 
